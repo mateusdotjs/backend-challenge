@@ -34,6 +34,8 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_DEBUG: ${DB_DEBUG:-false}
+    ports:
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy

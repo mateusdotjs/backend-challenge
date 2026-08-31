@@ -40,6 +40,9 @@ export class CreateWalletUseCase {
       });
 
       await this.walletRepo.save(wallet);
+      // #region agent log
+      fetch('http://127.0.0.1:7557/ingest/03872681-9ff9-405b-8a84-5368f552b0d9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'892c16'},body:JSON.stringify({sessionId:'892c16',location:'create-wallet.use-case.ts:execute',message:'wallet saved',data:{walletId:wallet.id,initialBalancePositive:initialBalance.isPositive()},timestamp:Date.now(),hypothesisId:'B',runId:'post-fix'})}).catch(()=>{});
+      // #endregion
 
       if (initialBalance.isPositive()) {
         // Create the internal OPENING transaction.
@@ -85,6 +88,9 @@ export class CreateWalletUseCase {
         await this.outboxRepo.save(
           OutboxMessage.enqueue(randomUUID(), WagerTransactionProcessed.from(tx, processedCtx)),
         );
+        // #region agent log
+        fetch('http://127.0.0.1:7557/ingest/03872681-9ff9-405b-8a84-5368f552b0d9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'892c16'},body:JSON.stringify({sessionId:'892c16',location:'create-wallet.use-case.ts:execute',message:'opening flow completed including outbox',data:{walletId:wallet.id,txId:tx.id},timestamp:Date.now(),hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
+        // #endregion
       }
 
       return toWalletDto(wallet);
