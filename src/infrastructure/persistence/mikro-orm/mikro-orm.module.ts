@@ -12,6 +12,7 @@ import { WagerTransactionMikroOrmRepository } from './repositories/wager-transac
 import { LedgerMikroOrmRepository } from './repositories/ledger.repository.js';
 import { InboxMikroOrmRepository } from './repositories/inbox.repository.js';
 import { OutboxMikroOrmRepository } from './repositories/outbox.repository.js';
+import { MikroOrmUnitOfWork } from './unit-of-work/mikro-orm-unit-of-work.js';
 
 import config from './mikro-orm.config.js';
 
@@ -20,6 +21,7 @@ export const WAGER_TRANSACTION_REPOSITORY = 'WagerTransactionRepositoryPort';
 export const LEDGER_REPOSITORY = 'LedgerRepositoryPort';
 export const INBOX_REPOSITORY = 'InboxRepositoryPort';
 export const OUTBOX_REPOSITORY = 'OutboxRepositoryPort';
+export const UNIT_OF_WORK = 'UnitOfWorkPort';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ export const OUTBOX_REPOSITORY = 'OutboxRepositoryPort';
     { provide: LEDGER_REPOSITORY, useClass: LedgerMikroOrmRepository },
     { provide: INBOX_REPOSITORY, useClass: InboxMikroOrmRepository },
     { provide: OUTBOX_REPOSITORY, useClass: OutboxMikroOrmRepository },
+    { provide: UNIT_OF_WORK, useClass: MikroOrmUnitOfWork },
   ],
   exports: [
     WALLET_REPOSITORY,
@@ -48,6 +51,7 @@ export const OUTBOX_REPOSITORY = 'OutboxRepositoryPort';
     LEDGER_REPOSITORY,
     INBOX_REPOSITORY,
     OUTBOX_REPOSITORY,
+    UNIT_OF_WORK,
   ],
 })
 export class MikroOrmPersistenceModule {}
