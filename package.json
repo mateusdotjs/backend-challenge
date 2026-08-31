@@ -5,6 +5,13 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "mikro-orm": {
+    "configPaths": [
+      "./src/infrastructure/persistence/mikro-orm/mikro-orm.config.ts",
+      "./dist/infrastructure/persistence/mikro-orm/mikro-orm.config.js"
+    ]
+  },
+
   "scripts": {
     "build": "nest build",
     "deploy": "nest deploy",
@@ -24,14 +31,13 @@
     "@mikro-orm/cli": "^7.1.14",
     "@mikro-orm/core": "^7.1.14",
     "@mikro-orm/migrations": "^7.1.14",
-    "@mikro-orm/nestjs": "^7.0.2",
+    "@mikro-orm/nestjs": "^7.1.0",
     "@mikro-orm/postgresql": "^7.1.14",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "big.js": "^7.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "big.js": "^7.0.1"
-
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -54,6 +60,5 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.2",
     "tsx": "^4.23.12"
-
   }
 }
