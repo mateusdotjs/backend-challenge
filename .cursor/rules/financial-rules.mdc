@@ -1,0 +1,32 @@
+---
+description: Financial and wagering business rules
+alwaysApply: true
+---
+
+Money:
+
+- Never use number, float or double for monetary values.
+- Use exact decimal arithmetic.
+- Money is immutable.
+- Amounts use decimal strings with exactly 2 decimal places.
+- Operations between different currencies must fail.
+
+Wallet:
+
+- At most one wallet per player and currency.
+- Balance can never be negative.
+- Every balance-changing operation produces exactly one ledger entry.
+- Wallet version starts at 1.
+- Version increments only when balance changes.
+
+WagerTransaction:
+
+- Supported kinds: OPENING, BET, WIN, LOSS, REFUND, ROLLBACK.
+- OPENING is internal and cannot come from the API or SQS.
+- PROCESSED, REJECTED and FAILED are terminal states.
+- LOSS does not change balance and does not create a ledger entry.
+- BET, WIN, REFUND and ROLLBACK create a ledger entry when they change balance.
+- REFUND can only reference a processed BET.
+- ROLLBACK can reference a processed BET, WIN or REFUND.
+- A reversal cannot be applied twice.
+- Reversal amount must equal the referenced transaction amount.

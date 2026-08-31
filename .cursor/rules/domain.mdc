@@ -1,0 +1,20 @@
+---
+description: Domain modeling rules
+alwaysApply: true
+---
+
+Main domain objects:
+
+- Money
+- Wallet
+- WagerTransaction
+- WalletLedgerEntry
+- InboxMessage
+- OutboxMessage
+
+- Follow the domain model defined by the technical challenge.
+- Use private/protected constructors and static factories.
+- Use `rehydrate` factories for persistence reconstruction.
+- Rehydration must not reapply business transition rules.
+- Domain entities must not depend on NestJS or ORM decorators.
+- Keep invariants inside the domain model.

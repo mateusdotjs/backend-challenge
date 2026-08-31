@@ -1,0 +1,5 @@
+---
+description: Runtime rules
+alwaysApply: true
+---
+We are using Bun as the Runtime for this project. Therefore, you should give preference to Bun tools.

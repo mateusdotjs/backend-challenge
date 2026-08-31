@@ -1,0 +1,20 @@
+---
+description: Testing requirements
+alwaysApply: false
+---
+Prioritize tests for:
+
+- Money validation and arithmetic.
+- Wallet invariants.
+- WagerTransaction state transitions.
+- BET, WIN, LOSS, REFUND and ROLLBACK.
+- Idempotency conflicts and replays.
+- Database transaction atomicity.
+- Inbox deduplication.
+- Outbox processing.
+- Concurrent wallet updates.
+- Duplicate messages.
+- Out-of-order references.
+- Multiple application instances.
+
+Concurrency tests must use real PostgreSQL and SQS containers where infrastructure behavior is being tested.

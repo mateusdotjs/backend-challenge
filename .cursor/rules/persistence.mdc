@@ -1,0 +1,14 @@
+---
+description: PostgreSQL and MikroORM persistence rules
+alwaysApply: false
+---
+- PostgreSQL is the source of truth for financial state and idempotency.
+- Use MikroORM.
+- Financial changes must be atomic.
+- Wallet update and its ledger entry must be committed in the same database transaction.
+- Inbox, financial changes, ledger and outbox must be committed atomically.
+- Never rely on application memory for consistency.
+- Never implement an uncontrolled read → calculate → update balance operation.
+- Database constraints must enforce required uniqueness and integrity rules.
+- The solution must work correctly with multiple application instances.
+- Never change migrations directly, any changes in migrations files will be done by me via CLI

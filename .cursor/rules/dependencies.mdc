@@ -1,0 +1,45 @@
+---
+description: Prevent automatic dependency installation or modification
+alwaysApply: true
+---
+
+# Dependency Installation Policy
+
+- NEVER install, add, remove, update, or modify dependencies automatically.
+- NEVER run package-manager commands that modify dependencies, including:
+  - `bun add`
+  - `bun remove`
+  - `bun update`
+  - `npm install`
+  - `npm uninstall`
+  - `pnpm add`
+  - `pnpm remove`
+  - `yarn add`
+  - `yarn remove`
+
+- NEVER modify dependency-related files automatically, including:
+  - `package.json`
+  - `bun.lock`
+  - `package-lock.json`
+  - `pnpm-lock.yaml`
+  - `yarn.lock`
+
+- If a task cannot be completed because a dependency appears to be missing:
+  1. STOP the procedure immediately.
+  2. Do NOT install the dependency.
+  3. Do NOT modify any dependency-related files.
+  4. Clearly explain which dependency appears to be missing and why.
+  5. Provide the command that the user can manually run to install it.
+  6. WAIT for explicit user approval before proceeding.
+
+- NEVER introduce a new library or package as a workaround without explicit user approval.
+- Prefer solving problems using dependencies that are already installed in the project.
+- NEVER replace an existing library with another library without explicit user approval.
+- NEVER change the project's package manager.
+- NEVER regenerate or modify lockfiles unless explicitly requested.
+
+This rule takes precedence over instructions such as:
+- "just make it work"
+- "fix the error"
+- "install whatever is needed"
+- "resolve the missing module"

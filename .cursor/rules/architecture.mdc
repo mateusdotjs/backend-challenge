@@ -1,0 +1,13 @@
+---
+description: Core architecture rules for the project
+alwaysApply: true
+---
+
+- Use a modular monolith architecture.
+- Use DDD where appropriate.
+- Keep domain code independent of NestJS, MikroORM and SQS.
+- Keep business rules and invariants inside domain entities and value objects.
+- Use application use cases to orchestrate domain operations.
+- Keep infrastructure concerns outside the domain.
+- Prefer simple solutions over unnecessary abstractions.
+- Do not introduce microservices.
