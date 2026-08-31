@@ -133,6 +133,23 @@ export class WagerTransaction {
     });
   }
 
+  /**
+   * Internal factory for the wallet-opening transaction.
+   * Not accessible through the public API or SQS — only `CreateWalletUseCase`
+   * should call this when crediting an initial balance.
+   */
+  static createOpening(
+    props: Omit<CreateWagerTransactionProps, 'kind' | 'referenceExternalTransactionId'>,
+  ): WagerTransaction {
+    return new WagerTransaction({
+      ...props,
+      kind: WagerTransactionKind.Opening,
+      referenceExternalTransactionId: undefined,
+      status: WagerTransactionStatus.Pending,
+      referenceResolutionAttempts: 0,
+    });
+  }
+
   static rehydrate(state: WagerTransactionState): WagerTransaction {
     return new WagerTransaction(state);
   }

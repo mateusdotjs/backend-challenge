@@ -35,5 +35,17 @@ export interface WagerTransactionRepositoryPort {
     params: FindPendingReferenceParams,
   ): Promise<WagerTransaction[]>;
 
+  /**
+   * Return the first PROCESSED transaction whose `referenceTransactionId`
+   * matches `referenceTransactionId`, or null if none exists.
+   *
+   * Used to enforce the "a reversal cannot be applied twice" rule when two
+   * different external transactions (different idempotency keys) both attempt
+   * to reverse the same reference.
+   */
+  findProcessedReversalByReferenceId(
+    referenceTransactionId: string,
+  ): Promise<WagerTransaction | null>;
+
   save(wagerTransaction: WagerTransaction): Promise<void>;
 }
