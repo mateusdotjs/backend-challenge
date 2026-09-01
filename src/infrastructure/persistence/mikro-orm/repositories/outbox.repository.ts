@@ -56,9 +56,7 @@ export class OutboxMikroOrmRepository implements OutboxRepositoryPort {
   private toPersistence(message: OutboxMessage): IOutboxMessage {
     // Domain payloads are frozen; MikroORM upsert mutates JSON values in Bun.
     const payload = structuredClone(message.payload) as Record<string, unknown>;
-    // #region agent log
-    fetch('http://127.0.0.1:7557/ingest/03872681-9ff9-405b-8a84-5368f552b0d9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'892c16'},body:JSON.stringify({sessionId:'892c16',location:'outbox.repository.ts:toPersistence',message:'outbox payload cloned for persistence',data:{eventType:message.eventType,payloadWasFrozen:Object.isFrozen(message.payload)},timestamp:Date.now(),hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
+    
     return {
       id: message.id,
       aggregateId: message.aggregateId,

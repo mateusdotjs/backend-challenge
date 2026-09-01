@@ -90,9 +90,6 @@ export class ProcessWagerTransactionUseCase {
     command: ProcessWagerTransactionCommand,
   ): Promise<ProcessTransactionResultDto> {
     const payloadHash = computePayloadHash(command);
-    // #region agent log
-    fetch('http://127.0.0.1:7557/ingest/03872681-9ff9-405b-8a84-5368f552b0d9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'892c16'},body:JSON.stringify({sessionId:'892c16',location:'process-wager-transaction.use-case.ts:execute',message:'payload hash computed',data:{payloadHash,kind:command.kind,hasReference:command.referenceExternalTransactionId!=null},timestamp:Date.now(),hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
 
     // Fast-path idempotency check before entering the transaction.
     // The definitive check is re-done inside the transaction to handle races.
