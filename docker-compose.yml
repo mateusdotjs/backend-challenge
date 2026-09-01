@@ -72,6 +72,13 @@ services:
       AWS_SECRET_ACCESS_KEY: test
       SQS_WAGER_TRANSACTIONS_QUEUE_URL: http://localstack:4566/000000000000/wager-transactions.fifo
       SQS_WAGER_TRANSACTIONS_DLQ_URL: http://localstack:4566/000000000000/wager-transactions-dlq.fifo
+      SQS_OUTBOX_EVENTS_QUEUE_URL: http://localstack:4566/000000000000/outbox-events.fifo
+      SQS_OUTBOX_EVENTS_DLQ_URL: http://localstack:4566/000000000000/outbox-events-dlq.fifo
+      OUTBOX_POLL_INTERVAL_MS: "1000"
+      OUTBOX_BATCH_SIZE: "10"
+      PENDING_REFERENCE_POLL_INTERVAL_MS: "5000"
+      PENDING_REFERENCE_BATCH_SIZE: "10"
+      PENDING_REFERENCE_MAX_ATTEMPTS: "20"
     ports:
       - "3000:3000"
     depends_on:

@@ -8,6 +8,8 @@ export interface FindPendingReferenceParams {
 export interface WagerTransactionRepositoryPort {
   findById(id: string): Promise<WagerTransaction | null>;
 
+  findByIdForUpdate(id: string): Promise<WagerTransaction | null>;
+
   findByIdempotencyKey(
     idempotencyKey: string,
   ): Promise<WagerTransaction | null>;

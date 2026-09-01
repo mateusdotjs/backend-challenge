@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, LockMode } from '@mikro-orm/core';
 
 import { Money } from '../../../../domain/shared/money/money.js';
 import { WagerTransaction } from '../../../../domain/wagering/wager-transaction.js';
@@ -21,6 +21,15 @@ export class WagerTransactionMikroOrmRepository
 
   async findById(id: string): Promise<WagerTransaction | null> {
     const entity = await this.em.findOne(WagerTransactionEntity, { id });
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  async findByIdForUpdate(id: string): Promise<WagerTransaction | null> {
+    const entity = await this.em.findOne(
+      WagerTransactionEntity,
+      { id },
+      { lockMode: LockMode.PESSIMISTIC_WRITE },
+    );
     return entity ? this.toDomain(entity) : null;
   }
 
@@ -51,9 +60,16 @@ export class WagerTransactionMikroOrmRepository
       WagerTransactionEntity,
       {
         status: WagerTransactionStatus.PendingReference,
-        nextReferenceAttemptAt: { $lte: params.now },
+        $or: [
+          { nextReferenceAttemptAt: null },
+          { nextReferenceAttemptAt: { $lte: params.now } },
+        ],
       },
-      { limit: params.limit },
+      {
+        lockMode: LockMode.PESSIMISTIC_PARTIAL_WRITE,
+        limit: params.limit,
+        orderBy: { nextReferenceAttemptAt: 'asc' },
+      },
     );
     return entities.map((e) => this.toDomain(e));
   }

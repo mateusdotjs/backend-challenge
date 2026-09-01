@@ -63,6 +63,7 @@ export class ReferenceValidationError extends Error {
 // ---------------------------------------------------------------------------
 const BASE_PENDING_BACKOFF_MS = 5_000;
 const MAX_PENDING_BACKOFF_MS = 5 * 60_000;
+const DEFAULT_MAX_REFERENCE_ATTEMPTS = 20;
 
 function nextReferenceAttemptAt(attempts: number, now: Date): Date {
   const backoffMs = Math.min(
@@ -174,6 +175,83 @@ export class ProcessWagerTransactionUseCase {
     });
   }
 
+  /**
+   * Reprocess a PENDING_REFERENCE transaction whose reference may now exist.
+   * Must be called inside an active database transaction (e.g. by PendingReferenceWorker).
+   */
+  async reprocessPendingReferenceWithinTransaction(
+    transactionId: string,
+  ): Promise<void> {
+    const tx = await this.wagerTxRepo.findByIdForUpdate(transactionId);
+    if (!tx || tx.status !== WagerTransactionStatus.PendingReference) {
+      return;
+    }
+
+    const now = this.clock.now();
+    if (tx.nextReferenceAttemptAt && tx.nextReferenceAttemptAt > now) {
+      return;
+    }
+
+    const wallet = await this.walletRepo.findByIdForUpdate(tx.walletId);
+    if (!wallet) {
+      throw new WalletNotFoundError(tx.walletId);
+    }
+
+    const maxAttempts = Number(
+      process.env['PENDING_REFERENCE_MAX_ATTEMPTS'] ??
+        DEFAULT_MAX_REFERENCE_ATTEMPTS,
+    );
+    if (tx.referenceResolutionAttempts >= maxAttempts) {
+      await this.persistRejected(tx, wallet, FailureCode.ReferenceNotFound, now);
+      return;
+    }
+
+    const refExternalId = tx.referenceExternalTransactionId;
+    if (!refExternalId) {
+      await this.persistRejected(tx, wallet, FailureCode.InvalidReference, now);
+      return;
+    }
+
+    const reference = await this.wagerTxRepo.findByProviderAndExternalId(
+      tx.providerId,
+      refExternalId,
+    );
+
+    if (!reference) {
+      await this.scheduleReferenceRetry(tx, now);
+      return;
+    }
+
+    try {
+      this.validateReferenceCompatibility(tx, reference);
+    } catch (err) {
+      if (err instanceof ReferenceValidationError) {
+        await this.persistRejected(tx, wallet, err.failureCode, now);
+        return;
+      }
+      throw err;
+    }
+
+    if (
+      tx.kind === WagerTransactionKind.Refund ||
+      tx.kind === WagerTransactionKind.Rollback
+    ) {
+      const existingReversal =
+        await this.wagerTxRepo.findProcessedReversalByReferenceId(reference.id);
+      if (existingReversal) {
+        await this.persistRejected(
+          tx,
+          wallet,
+          FailureCode.ReversalAlreadyApplied,
+          now,
+        );
+        return;
+      }
+    }
+
+    await this.applyWithReference(tx, wallet, reference, now);
+  }
+
   // -------------------------------------------------------------------------
   // Idempotency replay / conflict
   // -------------------------------------------------------------------------
@@ -193,16 +271,23 @@ export class ProcessWagerTransactionUseCase {
   // PENDING_REFERENCE path
   // -------------------------------------------------------------------------
 
-  private async persistPendingReference(
+  private async scheduleReferenceRetry(
     tx: WagerTransaction,
     now: Date,
-  ): Promise<ProcessTransactionResultDto> {
+  ): Promise<void> {
     const nextAttempt = nextReferenceAttemptAt(
       tx.referenceResolutionAttempts,
       now,
     );
     tx.markPendingReference(nextAttempt);
     await this.wagerTxRepo.save(tx);
+  }
+
+  private async persistPendingReference(
+    tx: WagerTransaction,
+    now: Date,
+  ): Promise<ProcessTransactionResultDto> {
+    await this.scheduleReferenceRetry(tx, now);
 
     const ctx = { eventId: randomUUID(), correlationId: tx.idempotencyKey };
     await this.outboxRepo.save(
