@@ -20,11 +20,12 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "bun dist/main",
     "lint": "oxlint src/ test/",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "bun --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test": "bun test src/",
+    "test:unit": "bun test src/",
+    "test:integration": "bun test test/integration --timeout 30000 --preload ./test/setup.ts",
+    "test:concurrency": "bun test test/concurrency --timeout 120000 --preload ./test/setup.ts",
+    "test:cov": "bun test --coverage",
+    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1123.0",
@@ -47,6 +48,7 @@
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
     "@types/big.js": "^7.0.0",
+    "@types/bun": "^1.4.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
@@ -60,7 +62,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^6.0.2",
-    "tsx": "^4.23.12"
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.2"
   }
 }

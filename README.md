@@ -46,16 +46,54 @@ $ bun run start:prod
 
 ## Run tests
 
+Tests use **Bun test** (required by the challenge). PostgreSQL and LocalStack must be running for integration and concurrency suites.
+
+### Prerequisites
+
 ```bash
-# unit tests
-$ bun run test
-
-# e2e tests
-$ bun run test:e2e
-
-# test coverage
-$ bun run test:cov
+docker compose up postgres localstack -d
 ```
+
+The integration/concurrency setup creates database `wagering_test`, runs migrations, and truncates tables between cases.
+
+### Commands
+
+```bash
+# Unit tests only (domain + use cases, no containers)
+bun run test:unit
+
+# Integration tests (PostgreSQL + LocalStack)
+bun run test:integration
+
+# Concurrency tests (parallel HTTP/SQS, multi-instance simulation)
+bun run test:concurrency
+
+# Full suite
+bun run test:all
+
+# Coverage
+bun run test:cov
+```
+
+### Optional: multi-container instances
+
+For manual validation with three app containers:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.concurrency.yml up app1 app2 app3 -d
+```
+
+Automated concurrency tests simulate multiple instances in-process (three Nest application contexts sharing the same database).
+
+### Test layout
+
+| Path | Scope |
+|---|---|
+| `src/**/*.spec.ts` | Unit tests (Money, Wallet, WagerTransaction, use cases) |
+| `test/integration/` | Migrations, HTTP API, inbox/outbox, DLQ |
+| `test/concurrency/` | Hot wallet, 50× idempotent, multi-wallet, recovery |
+
+Every integration/concurrency test asserts `wallet.balance == ledger sum` via reconciliation.
 
 ## Deployment
 

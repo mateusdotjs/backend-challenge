@@ -21,4 +21,5 @@ export default defineConfig({
     OutboxMessageEntity,
   ],
   namingStrategy: UnderscoreNamingStrategy,
+  allowGlobalContext: process.env['NODE_ENV'] === 'test',
 });
