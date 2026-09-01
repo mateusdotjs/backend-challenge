@@ -30,15 +30,24 @@ export function computePayloadHash(fields: PayloadFields): string {
 }
 
 function sortedJson(value: unknown): string {
+  if (value === undefined) {
+    return JSON.stringify(null);
+  }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return JSON.stringify(value);
   }
   const sorted = Object.keys(value as Record<string, unknown>)
     .sort()
     .reduce<Record<string, unknown>>((acc, key) => {
-      acc[key] = (value as Record<string, unknown>)[key];
+      const fieldValue = (value as Record<string, unknown>)[key];
+      if (fieldValue !== undefined) {
+        acc[key] = fieldValue;
+      }
       return acc;
     }, {});
+  // #region agent log
+  fetch('http://127.0.0.1:7557/ingest/03872681-9ff9-405b-8a84-5368f552b0d9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'892c16'},body:JSON.stringify({sessionId:'892c16',location:'payload-hash.ts:sortedJson',message:'canonical payload serialized',data:{keys:Object.keys(sorted)},timestamp:Date.now(),hypothesisId:'A',runId:'post-fix'})}).catch(()=>{});
+  // #endregion
   return JSON.stringify(
     Object.fromEntries(
       Object.entries(sorted).map(([k, v]) => [k, JSON.parse(sortedJson(v))]),
