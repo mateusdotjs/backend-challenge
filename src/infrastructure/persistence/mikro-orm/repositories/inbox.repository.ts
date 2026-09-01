@@ -21,7 +21,14 @@ export class InboxMikroOrmRepository implements InboxRepositoryPort {
   }
 
   async save(message: InboxMessage): Promise<void> {
-    await this.em.upsert(InboxMessageEntity, this.toPersistence(message));
+    if (!message.isProcessed()) {
+      // Plain INSERT — lets the PK violation propagate on concurrent inserts
+      // so the database constraint acts as the definitive deduplication guard.
+      await this.em.insert(InboxMessageEntity, this.toPersistence(message));
+    } else {
+      // UPDATE — mark processedAt; idempotent if retried
+      await this.em.upsert(InboxMessageEntity, this.toPersistence(message));
+    }
   }
 
   private toDomain(entity: IInboxMessage): InboxMessage {
