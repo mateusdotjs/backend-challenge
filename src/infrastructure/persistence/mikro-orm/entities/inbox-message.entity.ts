@@ -4,7 +4,7 @@ export const InboxMessageEntity = defineEntity({
   name: 'InboxMessage',
   properties: {
     messageId: p.string().primary(),
-    consumerName: p.string(),
+    consumerName: p.string().primary(),
     payloadHash: p.string(),
     receivedAt: p.datetime(),
     processedAt: p.datetime().nullable(),

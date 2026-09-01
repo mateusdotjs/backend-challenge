@@ -8,6 +8,13 @@ import {
 
 export const WagerTransactionEntity = defineEntity({
   name: 'WagerTransaction',
+  uniques: [
+    { properties: ['providerId', 'idempotencyKey'], name: 'wager_transaction_provider_id_idempotency_key_unique'},
+    { properties: ['providerId', 'externalTransactionId'], name: 'wager_transaction_provider_id_external_transaction_id_unique' },
+  ],
+  checks: [
+    { expression: '"money_amount" >= 0', name: 'wager_transaction_money_amount_non_negative' },
+  ],
   properties: {
     id: p.uuid().primary(),
     providerId: p.string(),
