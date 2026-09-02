@@ -11,6 +11,7 @@ export interface WagerTransactionRepositoryPort {
   findByIdForUpdate(id: string): Promise<WagerTransaction | null>;
 
   findByIdempotencyKey(
+    providerId: string,
     idempotencyKey: string,
   ): Promise<WagerTransaction | null>;
 

@@ -14,7 +14,7 @@ export class LedgerMikroOrmRepository implements LedgerRepositoryPort {
   constructor(private readonly em: EntityManager) {}
 
   async save(entry: WalletLedgerEntry): Promise<void> {
-    await this.em.upsert(WalletLedgerEntryEntity, this.toPersistence(entry));
+    await this.em.insert(WalletLedgerEntryEntity, this.toPersistence(entry));
   }
 
   async findByWalletId(walletId: string): Promise<WalletLedgerEntry[]> {

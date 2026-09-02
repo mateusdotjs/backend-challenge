@@ -95,84 +95,99 @@ export class ProcessWagerTransactionUseCase {
     // Fast-path idempotency check before entering the transaction.
     // The definitive check is re-done inside the transaction to handle races.
     const existingFast = await this.wagerTxRepo.findByIdempotencyKey(
+      command.providerId,
       command.idempotencyKey,
     );
     if (existingFast) {
       return this.handleExisting(existingFast, payloadHash, command.idempotencyKey);
     }
 
-    return this.uow.runInTransaction(async () => {
-      // Acquire an exclusive lock on the wallet first to serialise concurrent
-      // operations that affect the same wallet's balance.
-      const wallet = await this.walletRepo.findByIdForUpdate(command.walletId);
-      if (!wallet) {
-        throw new WalletNotFoundError(command.walletId);
-      }
+    return this.uow.runInTransaction(() =>
+      this.executeWithinTransaction(command),
+    );
+  }
 
-      // Re-check idempotency inside the transaction to handle the race where
-      // two concurrent requests both passed the fast-path check.
-      const existing = await this.wagerTxRepo.findByIdempotencyKey(
-        command.idempotencyKey,
-      );
-      if (existing) {
-        return this.handleExisting(existing, payloadHash, command.idempotencyKey);
-      }
+  /**
+   * Process a wager transaction inside an active database transaction.
+   * Must be called by infrastructure that already owns the transaction boundary
+   * (e.g. WagerTransactionConsumer for inbox atomicity).
+   */
+  async executeWithinTransaction(
+    command: ProcessWagerTransactionCommand,
+  ): Promise<ProcessTransactionResultDto> {
+    const payloadHash = computePayloadHash(command);
 
-      const now = this.clock.now();
-      const money = Money.from(command.money);
+    // Acquire an exclusive lock on the wallet first to serialise concurrent
+    // operations that affect the same wallet's balance.
+    const wallet = await this.walletRepo.findByIdForUpdate(command.walletId);
+    if (!wallet) {
+      throw new WalletNotFoundError(command.walletId);
+    }
 
-      const tx = WagerTransaction.create({
-        id: randomUUID(),
-        providerId: command.providerId,
-        externalTransactionId: command.externalTransactionId,
-        idempotencyKey: command.idempotencyKey,
-        payloadHash,
-        walletId: command.walletId,
-        playerId: command.playerId,
-        roundId: command.roundId,
-        gameId: command.gameId,
-        kind: command.kind,
-        money,
-        referenceExternalTransactionId: command.referenceExternalTransactionId,
-        createdAt: now,
-      });
+    // Re-check idempotency inside the transaction to handle the race where
+    // two concurrent requests both passed the fast-path check.
+    const existing = await this.wagerTxRepo.findByIdempotencyKey(
+      command.providerId,
+      command.idempotencyKey,
+    );
+    if (existing) {
+      return this.handleExisting(existing, payloadHash, command.idempotencyKey);
+    }
 
-      // Operations requiring a reference (REFUND, ROLLBACK) and optionally WIN
-      if (tx.requiresReference() || (tx.kind === WagerTransactionKind.Win && command.referenceExternalTransactionId)) {
-        const refExternalId = command.referenceExternalTransactionId!;
-        const reference = await this.wagerTxRepo.findByProviderAndExternalId(
-          command.providerId,
-          refExternalId,
-        );
+    const now = this.clock.now();
+    const money = Money.from(command.money);
 
-        if (!reference) {
-          return this.persistPendingReference(tx, now);
-        }
-
-        // Validate reference compatibility — on failure, save as REJECTED
-        try {
-          this.validateReferenceCompatibility(tx, reference);
-        } catch (err) {
-          if (err instanceof ReferenceValidationError) {
-            return this.persistRejected(tx, wallet, err.failureCode, now);
-          }
-          throw err;
-        }
-
-        // Check reversal deduplication (only for REFUND and ROLLBACK)
-        if (tx.kind === WagerTransactionKind.Refund || tx.kind === WagerTransactionKind.Rollback) {
-          const existingReversal =
-            await this.wagerTxRepo.findProcessedReversalByReferenceId(reference.id);
-          if (existingReversal) {
-            return this.persistRejected(tx, wallet, FailureCode.ReversalAlreadyApplied, now);
-          }
-        }
-
-        return this.applyWithReference(tx, wallet, reference, now);
-      }
-
-      return this.applyWithoutReference(tx, wallet, now);
+    const tx = WagerTransaction.create({
+      id: randomUUID(),
+      providerId: command.providerId,
+      externalTransactionId: command.externalTransactionId,
+      idempotencyKey: command.idempotencyKey,
+      payloadHash,
+      walletId: command.walletId,
+      playerId: command.playerId,
+      roundId: command.roundId,
+      gameId: command.gameId,
+      kind: command.kind,
+      money,
+      referenceExternalTransactionId: command.referenceExternalTransactionId,
+      createdAt: now,
     });
+
+    // Operations requiring a reference (REFUND, ROLLBACK) and optionally WIN
+    if (tx.requiresReference() || (tx.kind === WagerTransactionKind.Win && command.referenceExternalTransactionId)) {
+      const refExternalId = command.referenceExternalTransactionId!;
+      const reference = await this.wagerTxRepo.findByProviderAndExternalId(
+        command.providerId,
+        refExternalId,
+      );
+
+      if (!reference) {
+        return this.persistPendingReference(tx, now);
+      }
+
+      // Validate reference compatibility — on failure, save as REJECTED
+      try {
+        this.validateReferenceCompatibility(tx, reference);
+      } catch (err) {
+        if (err instanceof ReferenceValidationError) {
+          return this.persistRejected(tx, wallet, err.failureCode, now);
+        }
+        throw err;
+      }
+
+      // Check reversal deduplication (only for REFUND and ROLLBACK)
+      if (tx.kind === WagerTransactionKind.Refund || tx.kind === WagerTransactionKind.Rollback) {
+        const existingReversal =
+          await this.wagerTxRepo.findProcessedReversalByReferenceId(reference.id);
+        if (existingReversal) {
+          return this.persistRejected(tx, wallet, FailureCode.ReversalAlreadyApplied, now);
+        }
+      }
+
+      return this.applyWithReference(tx, wallet, reference, now);
+    }
+
+    return this.applyWithoutReference(tx, wallet, now);
   }
 
   /**
@@ -706,6 +721,34 @@ export class ProcessWagerTransactionUseCase {
       throw err;
     }
   }
+  // -------------------------------------------------------------------------
+  // Infrastructure failure — best-effort terminal mark
+  // -------------------------------------------------------------------------
+
+  /**
+   * Best-effort: if a transaction exists in a non-terminal state for the
+   * given (providerId, idempotencyKey), transition it to FAILED so the
+   * record becomes auditable after all SQS retries are exhausted.
+   *
+   * No-op when the transaction does not exist yet (error happened before the
+   * first commit) or is already in a terminal state.
+   * Must be called inside an active database transaction.
+   */
+  async failTransactionIfExistsWithinTransaction(
+    providerId: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const tx = await this.wagerTxRepo.findByIdempotencyKey(
+      providerId,
+      idempotencyKey,
+    );
+    if (!tx || tx.isTerminal()) {
+      return;
+    }
+    tx.fail(FailureCode.InfrastructureError);
+    await this.wagerTxRepo.save(tx);
+  }
+
 }
 
 // ---------------------------------------------------------------------------

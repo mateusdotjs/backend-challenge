@@ -131,6 +131,14 @@ Consumidor:
 - conflito de payload da inbox → DLQ
 - `SIGTERM` espera o poll em andamento
 
+Fronteira transacional por entry point:
+
+- **HTTP** → `execute()` abre a transação (fast-path de idempotência fora dela).
+- **Consumer SQS** → infra abre a transação (inbox + processamento + outbox no mesmo commit); chama `executeWithinTransaction()`.
+- **Pending-reference worker** → infra abre a transação; chama `reprocessPendingReferenceWithinTransaction()`.
+
+Transações aninhadas (savepoints do MikroORM) foram evitadas de propósito: uma transação plana é mais fácil de auditar e alinha com a atomicidade exigida entre inbox, ledger e outbox.
+
 Outbox: gravada no commit financeiro. Worker publica depois, com backoff `5s * 2^(attempts-1)` limitado a 5 min. Publicação duplicada é segura para o consumidor (at-least-once).
 
 ## `PENDING_REFERENCE`
@@ -138,6 +146,14 @@ Outbox: gravada no commit financeiro. Worker publica depois, com backoff `5s * 2
 Worker com backoff `5s * 2^attempts`, teto de 5 min, **20 tentativas** (`PENDING_REFERENCE_MAX_ATTEMPTS`).
 
 Cabe atraso de mensagem fora de ordem sem esperar para sempre. Esgotado o limite: `REJECTED` + `REFERENCE_NOT_FOUND` e evento correspondente.
+
+## Status `FAILED`
+
+`FAILED` é terminal e auditável, reservado para falhas permanentes de infraestrutura — distinto de `REJECTED` (regra de negócio) e `PENDING_REFERENCE` (aguardando referência).
+
+O consumidor SQS detecta quando uma mensagem atingiu `SQS_MAX_RECEIVE_COUNT` (padrão 5, configurável) e tenta, em transação separada (best-effort), chamar `failTransactionIfExistsWithinTransaction`. Isso transiciona a `WagerTransaction` existente no banco para `FAILED` com `failureCode = INFRASTRUCTURE_ERROR` antes de o SQS movê-la para a DLQ.
+
+**Limitação conhecida:** se o erro ocorreu antes do primeiro commit (a transação nunca chegou a ser persistida), não existe registro para marcar. Nesses casos, o DLQ serve como evidência da falha e a `WagerTransaction` simplesmente não existe no banco. Essa limitação é intrínseca ao modelo at-least-once com commit atômico e não tem solução sem two-phase commit ou saga compensatória.
 
 ## Observabilidade
 

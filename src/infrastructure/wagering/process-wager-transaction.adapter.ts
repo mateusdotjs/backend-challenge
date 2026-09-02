@@ -29,6 +29,41 @@ export class ProcessWagerTransactionAdapter {
   async execute(
     command: ProcessWagerTransactionCommand,
   ): Promise<ProcessTransactionResultDto> {
+    return this.runWithInstrumentation(command, () =>
+      this.processWagerTransaction.execute(command),
+    );
+  }
+
+  async executeWithinTransaction(
+    command: ProcessWagerTransactionCommand,
+  ): Promise<ProcessTransactionResultDto> {
+    return this.runWithInstrumentation(command, () =>
+      this.processWagerTransaction.executeWithinTransaction(command),
+    );
+  }
+
+  reprocessPendingReferenceWithinTransaction(
+    transactionId: string,
+  ): Promise<void> {
+    return this.processWagerTransaction.reprocessPendingReferenceWithinTransaction(
+      transactionId,
+    );
+  }
+
+  failTransactionIfExistsWithinTransaction(
+    providerId: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    return this.processWagerTransaction.failTransactionIfExistsWithinTransaction(
+      providerId,
+      idempotencyKey,
+    );
+  }
+
+  private async runWithInstrumentation(
+    command: ProcessWagerTransactionCommand,
+    work: () => Promise<ProcessTransactionResultDto>,
+  ): Promise<ProcessTransactionResultDto> {
     updateLogContext({
       walletId: command.walletId,
       providerId: command.providerId,
@@ -37,7 +72,7 @@ export class ProcessWagerTransactionAdapter {
     const startedAt = performance.now();
 
     try {
-      const result = await this.processWagerTransaction.execute(command);
+      const result = await work();
       updateLogContext({ transactionId: result.transactionId });
 
       this.metrics.incrementWagerTransaction(result.status);
@@ -72,14 +107,6 @@ export class ProcessWagerTransactionAdapter {
       const seconds = (performance.now() - startedAt) / 1000;
       this.metrics.recordWagerProcessingDuration(seconds);
     }
-  }
-
-  reprocessPendingReferenceWithinTransaction(
-    transactionId: string,
-  ): Promise<void> {
-    return this.processWagerTransaction.reprocessPendingReferenceWithinTransaction(
-      transactionId,
-    );
   }
 
   private recordOutcomeLogs(result: ProcessTransactionResultDto): void {

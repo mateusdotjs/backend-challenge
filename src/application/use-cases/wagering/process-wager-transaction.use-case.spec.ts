@@ -37,8 +37,11 @@ class InMemoryWagerTxRepo implements WagerTransactionRepositoryPort {
     return this.findById(id);
   }
 
-  async findByIdempotencyKey(key: string): Promise<WagerTransaction | null> {
-    return this.byIdempotency.get(key) ?? null;
+  async findByIdempotencyKey(
+    providerId: string,
+    idempotencyKey: string,
+  ): Promise<WagerTransaction | null> {
+    return this.byIdempotency.get(`${providerId}:${idempotencyKey}`) ?? null;
   }
 
   async findByProviderAndExternalId(
@@ -73,7 +76,7 @@ class InMemoryWagerTxRepo implements WagerTransactionRepositoryPort {
 
   async save(tx: WagerTransaction): Promise<void> {
     this.byId.set(tx.id, tx);
-    this.byIdempotency.set(tx.idempotencyKey, tx);
+    this.byIdempotency.set(`${tx.providerId}:${tx.idempotencyKey}`, tx);
     this.byProviderExternal.set(
       `${tx.providerId}:${tx.externalTransactionId}`,
       tx,
@@ -241,7 +244,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.balance.amount).toBe('100.00');
     expect(ledgerEntries).toHaveLength(2);
 
-    const reversal = await wagerTxRepo.findByIdempotencyKey('provider-a:refund-1');
+    const reversal = await wagerTxRepo.findByIdempotencyKey('provider-a', 'provider-a:refund-1');
     expect(reversal?.referenceTransactionId).toBeDefined();
   });
 

@@ -225,7 +225,10 @@ export class WagerTransactionConsumer
           }
         }
 
-        const result = await this.processWagerTransaction.execute(parsed.data);
+        const result =
+          await this.processWagerTransaction.executeWithinTransaction(
+            parsed.data,
+          );
         transactionId = result.transactionId;
 
         inbox.markProcessed(this.clock.now());
@@ -275,6 +278,26 @@ export class WagerTransactionConsumer
           err,
         );
         this.metrics.incrementRetry();
+
+        const maxReceiveCount = Number(
+          process.env['SQS_MAX_RECEIVE_COUNT'] ?? 5,
+        );
+        if (receiveCount >= maxReceiveCount) {
+          await this.uow
+            .runInTransaction(() =>
+              this.processWagerTransaction.failTransactionIfExistsWithinTransaction(
+                parsed.data.providerId,
+                parsed.data.idempotencyKey,
+              ),
+            )
+            .catch((failErr) => {
+              this.logger.error(
+                'sqs_mark_failed_error',
+                { messageId: parsed.messageId },
+                failErr,
+              );
+            });
+        }
       }
     } finally {
       const seconds = (performance.now() - startedAt) / 1000;

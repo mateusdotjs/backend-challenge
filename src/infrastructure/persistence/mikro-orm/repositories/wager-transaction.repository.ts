@@ -34,9 +34,11 @@ export class WagerTransactionMikroOrmRepository
   }
 
   async findByIdempotencyKey(
+    providerId: string,
     idempotencyKey: string,
   ): Promise<WagerTransaction | null> {
     const entity = await this.em.findOne(WagerTransactionEntity, {
+      providerId,
       idempotencyKey,
     });
     return entity ? this.toDomain(entity) : null;
