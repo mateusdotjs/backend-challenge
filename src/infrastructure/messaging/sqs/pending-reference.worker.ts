@@ -60,7 +60,15 @@ export class PendingReferenceWorker
 
   private async startPolling(): Promise<void> {
     while (!this.stopped) {
-      await this.pollOnce();
+      try {
+        await this.pollOnce();
+      } catch (err) {
+        this.logger.error('pending_reference_poll_failed', {}, err);
+        const pollIntervalMs = Number(
+          process.env['PENDING_REFERENCE_POLL_INTERVAL_MS'] ?? 5000,
+        );
+        await this.interruptibleSleep(pollIntervalMs);
+      }
     }
   }
 
@@ -133,7 +141,7 @@ export class PendingReferenceWorker
             providerId,
           });
         }
-        throw err;
+        break;
       }
     }
 

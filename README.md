@@ -11,27 +11,41 @@ Stack: **Bun**, **TypeScript**, **NestJS**, **MikroORM**, **PostgreSQL**, **SQS*
 
 ## Setup
 
+### Docker completo (recomendado)
+
+Sobe PostgreSQL, LocalStack, pgAdmin e a aplicação. As migrations são aplicadas automaticamente pelo serviço `migrate` antes do `app` iniciar.
+
+```bash
+bun install
+docker compose up
+```
+
+A aplicação fica disponível na porta `3000`. Defaults de desenvolvimento: usuário/senha `postgres`, banco `wagering`, LocalStack em `http://localhost:4566`.
+
+### Desenvolvimento no host
+
+Para rodar a aplicação localmente com hot reload nativo (fora do container):
+
 ```bash
 bun install
 docker compose up postgres localstack -d
 bunx mikro-orm migration:up
+bun run start:dev
 ```
 
-A aplicação sobe na porta `3000`. Defaults de desenvolvimento: usuário/senha `postgres`, banco `wagering`, LocalStack em `http://localhost:4566`.
-
-Para subir também a aplicação em container:
+Atalho para aplicar migrations sem subir o `app`:
 
 ```bash
-docker compose up -d
+docker compose run --rm migrate
 ```
 
 ## Comandos
 
 ```bash
-bun run start:dev          # API + workers (watch)
+bun run start:dev          # API + workers (watch) — fluxo host
 bun run start              # API + workers
 bun run start:prod         # bun dist/main (após bun run build)
-bunx mikro-orm migration:up
+bunx mikro-orm migration:up  # necessário no fluxo host ou após novas migrations
 bun run lint
 ```
 
