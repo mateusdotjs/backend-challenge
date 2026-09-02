@@ -30,34 +30,58 @@ Cada processo da aplicação sobe **API HTTP + três workers** no mesmo binário
 
 ## Pré-requisitos
 
-- [Bun 1.x](https://bun.sh)
-- Docker e Docker Compose
+| Ferramenta | Quando precisa |
+|---|---|
+| Docker e Docker Compose | Sempre (banco, filas SQS, ou app containerizada) |
+| [Bun 1.x](https://bun.sh) | App no host, testes ou lint — **não** é necessário só para subir via Docker |
 
-## Início rápido (Docker — recomendado)
+## Como rodar
+
+Escolha **um** fluxo. Não misture: se o serviço `app` do compose estiver no ar, não rode `bun run start:dev` no host na mesma porta (conflito em `:3000` e dois consumers SQS).
+
+### Opção 1 — Tudo no Docker (recomendado para avaliar)
+
+Só precisa de Docker. Dependências são instaladas na build da imagem — **não** rode `bun install` no host.
 
 ```bash
-bun install
-docker compose up
+docker compose up --build
 ```
 
-Ordem de subida:
+Na primeira execução, `--build` garante a imagem com `bun install`. Depois, `docker compose up` basta.
+
+O que sobe, nesta ordem:
 
 1. **postgres** — aguarda healthcheck
 2. **localstack** — cria filas SQS via [`localstack/init-queues.sh`](localstack/init-queues.sh)
-3. **migrate** — roda `bunx mikro-orm migration:up` (one-shot, encerra ao concluir)
-4. **app** — API + workers em `http://localhost:3000` (`start:dev` com hot reload via volume mount)
+3. **migrate** — one-shot: `bunx mikro-orm migration:up` (encerra ao concluir)
+4. **app** — API + workers em http://localhost:3000 (`start:dev` dentro do container, com hot reload via volume mount)
+5. **pgadmin** (opcional) — http://localhost:5050
 
-Serviços auxiliares: **pgAdmin** em `http://localhost:5050` (opcional).
+Defaults: usuário/senha `postgres`, banco `wagering`, LocalStack em http://localhost:4566.
 
-Defaults: usuário/senha `postgres`, banco `wagering`, LocalStack em `http://localhost:4566`.
+### Opção 2 — Infra no Docker, app no host (desenvolvimento)
+
+Precisa de Bun no host. Sobe **apenas** postgres e localstack — **não** inclua o serviço `app`.
+
+```bash
+bun install
+docker compose up postgres localstack -d
+docker compose run --rm migrate
+bun run start:dev
+```
+
+Alternativa à migration: `bunx mikro-orm migration:up` no host (com `DB_HOST=localhost`).
+
+No host, endpoints de infra usam `localhost` (não `localstack`):
+
+- `DB_HOST=localhost`
+- `AWS_ENDPOINT_URL=http://localhost:4566`
 
 ### Verificar que está funcionando
 
 ```bash
-# readiness (PostgreSQL + SQS)
 curl -s http://localhost:3000/health/ready | jq
 
-# criar wallet
 curl -s -X POST http://localhost:3000/wallets \
   -H 'Content-Type: application/json' \
   -d '{"playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","initialBalance":{"amount":"100.00","currency":"BRL"}}' | jq
@@ -67,29 +91,7 @@ curl -s -X POST http://localhost:3000/wagering/transactions \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: provider-a:bet-1' \
   -d '{"providerId":"provider-a","externalTransactionId":"bet-1","playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","walletId":"WALLET_ID","roundId":"round-1","gameId":"game-1","kind":"BET","money":{"amount":"10.00","currency":"BRL"}}' | jq
-
-# métricas (opcional)
-curl -s http://localhost:3000/metrics | head
 ```
-
-## Desenvolvimento no host
-
-Para rodar a aplicação fora do container (hot reload nativo do Bun):
-
-```bash
-bun install
-docker compose up postgres localstack -d
-bunx mikro-orm migration:up
-bun run start:dev
-```
-
-Atalho para aplicar migrations sem subir o `app`:
-
-```bash
-docker compose run --rm migrate
-```
-
-Variáveis padrão no host: `DB_HOST=localhost`, `AWS_ENDPOINT_URL=http://localhost:4566` (mesmos valores implícitos do MikroORM/SQS client quando não definidos no compose).
 
 ## Serviços e portas
 
@@ -129,11 +131,12 @@ Por que múltiplas instâncias são seguras:
 
 ### Rodar 3 instâncias localmente (host)
 
-Sem alterar o compose (evita conflito de porta no serviço `app`):
+Use a **Opção 2** (infra Docker, app no host). Não suba o serviço `app` do compose.
 
 ```bash
+bun install
 docker compose up postgres localstack -d
-bunx mikro-orm migration:up
+docker compose run --rm migrate
 
 # terminal 1
 PORT=3000 bun run start:dev
@@ -174,9 +177,10 @@ Os **testes de concorrência** simulam três apps Nest em processo com `enableWo
 
 ## Testes
 
-PostgreSQL e LocalStack precisam estar no ar para integração e concorrência. O setup cria o banco `wagering_test`, aplica migrations e limpa tabelas entre casos.
+Precisa de Bun no host. PostgreSQL e LocalStack devem estar no ar (Opção 2: `docker compose up postgres localstack -d`).
 
 ```bash
+bun install                # se ainda não instalou dependências no host
 bun run test:unit          # domínio e use cases
 bun run test:integration   # PostgreSQL + LocalStack
 bun run test:concurrency   # races reais, multi-instância em processo
@@ -190,7 +194,7 @@ bun run test:cov
 | `test/integration/` | Migrations, API, inbox/outbox, DLQ, observabilidade |
 | `test/concurrency/` | Hot wallet, idempotência paralela, recovery |
 
-Todo teste de integração/concorrência confere `wallet.balance == saldo reconstruído pelo ledger`.
+Todo teste de integração/concorrência confere `wallet.balance == saldo reconstruído pelo ledger`. O setup de teste cria o banco `wagering_test`, aplica migrations e limpa tabelas entre casos.
 
 ## API
 

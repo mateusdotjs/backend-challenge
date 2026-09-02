@@ -97,8 +97,10 @@ flowchart LR
 | `postgres` | Banco principal (`wagering`) |
 | `localstack` | SQS; filas criadas por [`localstack/init-queues.sh`](localstack/init-queues.sh) |
 | `migrate` | One-shot: `bunx mikro-orm migration:up` antes do `app` |
-| `app` | API + workers (`start:dev`, volume mount) |
+| `app` | API + workers (`start:dev` no container — modo dev com hot reload; stage `production` do Dockerfile usa `start:prod`) |
 | `pgadmin` | UI opcional |
+
+**Como rodar:** ver [README — Como rodar](./README.md#como-rodar). Fluxo Docker completo não exige Bun no host; fluxo infra + host sobe só `postgres` e `localstack` (sem o serviço `app`).
 
 O compose padrão sobe **uma instância** do `app` em `:3000`. Para N instâncias localmente, ver [README — Múltiplas instâncias](./README.md#múltiplas-instâncias).
 
