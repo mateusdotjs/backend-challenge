@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Money } from '../../../domain/shared/money/money.js';
 import { FailureCode } from '../../../domain/shared/failure-code.js';
+import { WalletLedgerEntry } from '../../../domain/ledger/wallet-ledger-entry.js';
 import { Wallet } from '../../../domain/wallet/wallet.js';
 import {
   InsufficientBalanceError,
@@ -32,21 +33,10 @@ import {
   PayloadConflictError,
   ReferenceValidationError,
 } from './wagering.errors.js';
-
-// ---------------------------------------------------------------------------
-// Pending-reference backoff (5 s base, doubles per attempt, cap 5 min)
-// ---------------------------------------------------------------------------
-const BASE_PENDING_BACKOFF_MS = 5_000;
-const MAX_PENDING_BACKOFF_MS = 5 * 60_000;
-const DEFAULT_MAX_REFERENCE_ATTEMPTS = 20;
-
-function nextReferenceAttemptAt(attempts: number, now: Date): Date {
-  const backoffMs = Math.min(
-    BASE_PENDING_BACKOFF_MS * Math.pow(2, attempts),
-    MAX_PENDING_BACKOFF_MS,
-  );
-  return new Date(now.getTime() + backoffMs);
-}
+import {
+  DEFAULT_MAX_REFERENCE_ATTEMPTS,
+  nextReferenceAttemptAt,
+} from './pending-reference-backoff.js';
 
 // ---------------------------------------------------------------------------
 // Use case
@@ -494,6 +484,42 @@ export class ProcessWagerTransactionUseCase {
     return toResult(tx, false);
   }
 
+  private async persistProcessedWithLedger(
+    tx: WagerTransaction,
+    wallet: Wallet,
+    entry: WalletLedgerEntry,
+    referenceId: string | undefined,
+    now: Date,
+  ): Promise<ProcessTransactionResultDto> {
+    tx.markProcessed(referenceId, wallet.balance, now);
+
+    await this.walletRepo.save(wallet);
+    await this.ledgerRepo.save(entry);
+    await this.wagerTxRepo.save(tx);
+
+    const correlationId = tx.idempotencyKey;
+    await this.outboxRepo.save(
+      OutboxMessage.enqueue(
+        randomUUID(),
+        WalletBalanceChanged.from(wallet, entry, {
+          eventId: randomUUID(),
+          correlationId,
+        }),
+      ),
+    );
+    await this.outboxRepo.save(
+      OutboxMessage.enqueue(
+        randomUUID(),
+        WagerTransactionProcessed.from(tx, {
+          eventId: randomUUID(),
+          correlationId,
+        }),
+      ),
+    );
+
+    return toResult(tx, false);
+  }
+
   private async applyBet(
     tx: WagerTransaction,
     wallet: Wallet,
@@ -507,33 +533,7 @@ export class ProcessWagerTransactionUseCase {
         at: now,
       });
 
-      tx.markProcessed(undefined, wallet.balance, now);
-
-      await this.walletRepo.save(wallet);
-      await this.ledgerRepo.save(entry);
-      await this.wagerTxRepo.save(tx);
-
-      const correlationId = tx.idempotencyKey;
-      await this.outboxRepo.save(
-        OutboxMessage.enqueue(
-          randomUUID(),
-          WalletBalanceChanged.from(wallet, entry, {
-            eventId: randomUUID(),
-            correlationId,
-          }),
-        ),
-      );
-      await this.outboxRepo.save(
-        OutboxMessage.enqueue(
-          randomUUID(),
-          WagerTransactionProcessed.from(tx, {
-            eventId: randomUUID(),
-            correlationId,
-          }),
-        ),
-      );
-
-      return toResult(tx, false);
+      return this.persistProcessedWithLedger(tx, wallet, entry, undefined, now);
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
         return this.persistRejected(tx, wallet, FailureCode.InsufficientBalance, now);
@@ -566,33 +566,13 @@ export class ProcessWagerTransactionUseCase {
       throw err;
     }
 
-    tx.markProcessed(reference?.id, wallet.balance, now);
-
-    await this.walletRepo.save(wallet);
-    await this.ledgerRepo.save(entry);
-    await this.wagerTxRepo.save(tx);
-
-    const correlationId = tx.idempotencyKey;
-    await this.outboxRepo.save(
-      OutboxMessage.enqueue(
-        randomUUID(),
-        WalletBalanceChanged.from(wallet, entry, {
-          eventId: randomUUID(),
-          correlationId,
-        }),
-      ),
+    return this.persistProcessedWithLedger(
+      tx,
+      wallet,
+      entry,
+      reference?.id,
+      now,
     );
-    await this.outboxRepo.save(
-      OutboxMessage.enqueue(
-        randomUUID(),
-        WagerTransactionProcessed.from(tx, {
-          eventId: randomUUID(),
-          correlationId,
-        }),
-      ),
-    );
-
-    return toResult(tx, false);
   }
 
   private async applyCredit(
@@ -616,33 +596,7 @@ export class ProcessWagerTransactionUseCase {
       throw err;
     }
 
-    tx.markProcessed(reference.id, wallet.balance, now);
-
-    await this.walletRepo.save(wallet);
-    await this.ledgerRepo.save(entry);
-    await this.wagerTxRepo.save(tx);
-
-    const correlationId = tx.idempotencyKey;
-    await this.outboxRepo.save(
-      OutboxMessage.enqueue(
-        randomUUID(),
-        WalletBalanceChanged.from(wallet, entry, {
-          eventId: randomUUID(),
-          correlationId,
-        }),
-      ),
-    );
-    await this.outboxRepo.save(
-      OutboxMessage.enqueue(
-        randomUUID(),
-        WagerTransactionProcessed.from(tx, {
-          eventId: randomUUID(),
-          correlationId,
-        }),
-      ),
-    );
-
-    return toResult(tx, false);
+    return this.persistProcessedWithLedger(tx, wallet, entry, reference.id, now);
   }
 
   private async applyRollback(
@@ -671,33 +625,7 @@ export class ProcessWagerTransactionUseCase {
             at: now,
           });
 
-      tx.markProcessed(reference.id, wallet.balance, now);
-
-      await this.walletRepo.save(wallet);
-      await this.ledgerRepo.save(entry);
-      await this.wagerTxRepo.save(tx);
-
-      const correlationId = tx.idempotencyKey;
-      await this.outboxRepo.save(
-        OutboxMessage.enqueue(
-          randomUUID(),
-          WalletBalanceChanged.from(wallet, entry, {
-            eventId: randomUUID(),
-            correlationId,
-          }),
-        ),
-      );
-      await this.outboxRepo.save(
-        OutboxMessage.enqueue(
-          randomUUID(),
-          WagerTransactionProcessed.from(tx, {
-            eventId: randomUUID(),
-            correlationId,
-          }),
-        ),
-      );
-
-      return toResult(tx, false);
+      return this.persistProcessedWithLedger(tx, wallet, entry, reference.id, now);
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
         return this.persistRejected(

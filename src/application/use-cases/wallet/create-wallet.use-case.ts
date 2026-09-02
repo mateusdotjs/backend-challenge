@@ -14,6 +14,7 @@ import { OutboxRepositoryPort } from '../../ports/repositories/outbox-repository
 import { UnitOfWorkPort } from '../../ports/unit-of-work.port.js';
 import { ClockPort } from '../../ports/clock.port.js';
 import { CreateWalletCommand, WalletDto } from '../shared/use-case.types.js';
+import { toWalletDto } from './wallet.mapper.js';
 
 export class CreateWalletUseCase {
   constructor(
@@ -90,14 +91,4 @@ export class CreateWalletUseCase {
       return toWalletDto(wallet);
     });
   }
-}
-
-export function toWalletDto(wallet: Wallet): WalletDto {
-  return {
-    id: wallet.id,
-    playerId: wallet.playerId,
-    currency: wallet.currency,
-    balance: wallet.balance.toJSON(),
-    version: wallet.version,
-  };
 }

@@ -1,6 +1,6 @@
 import { WalletRepositoryPort } from '../../ports/repositories/wallet-repository.port.js';
 import { WalletDto } from '../shared/use-case.types.js';
-import { toWalletDto } from './create-wallet.use-case.js';
+import { toWalletDto } from './wallet.mapper.js';
 import { WalletNotFoundError } from './wallet.errors.js';
 
 export class GetWalletUseCase {

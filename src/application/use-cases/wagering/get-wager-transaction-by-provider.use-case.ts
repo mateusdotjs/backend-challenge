@@ -1,8 +1,6 @@
 import { WagerTransactionRepositoryPort } from '../../ports/repositories/wager-transaction-repository.port.js';
 import { WagerTransactionDto } from '../shared/use-case.types.js';
-import {
-  toWagerTransactionDto,
-} from './get-wager-transaction-by-id.use-case.js';
+import { toWagerTransactionDto } from './wagering.mapper.js';
 import { WagerTransactionNotFoundError } from './wagering.errors.js';
 
 export interface GetWagerTransactionByProviderQuery {

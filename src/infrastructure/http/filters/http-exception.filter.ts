@@ -14,6 +14,7 @@ import {
   PayloadConflictError,
   WagerTransactionNotFoundError,
 } from '../../../application/use-cases/wagering/wagering.errors.js';
+import { WalletNotFoundError } from '../../../application/use-cases/wallet/wallet.errors.js';
 
 interface ErrorBody {
   code: string;
@@ -54,7 +55,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       };
     }
 
-    if (this.isNamedError(exception, 'WalletNotFoundError')) {
+    if (exception instanceof WalletNotFoundError) {
       return {
         status: HttpStatus.NOT_FOUND,
         body: {
@@ -178,10 +179,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message: String(response),
       },
     };
-  }
-
-  private isNamedError(exception: unknown, name: string): boolean {
-    return exception instanceof Error && exception.name === name;
   }
 
   private isUniqueViolation(exception: unknown): boolean {

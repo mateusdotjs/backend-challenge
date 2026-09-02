@@ -2,9 +2,9 @@ import { WalletLedgerEntry } from '../../../domain/ledger/wallet-ledger-entry.js
 import { LedgerRepositoryPort } from '../../ports/repositories/ledger-repository.port.js';
 import {
   GetWalletLedgerQuery,
-  LedgerEntryDto,
   WalletLedgerPageDto,
 } from '../shared/use-case.types.js';
+import { toLedgerEntryDto } from './wallet.mapper.js';
 
 /**
  * Cursor format: base64( createdAt.toISOString() + ":" + id )
@@ -78,17 +78,4 @@ function decodeCursor(
   } catch {
     return null;
   }
-}
-
-function toLedgerEntryDto(entry: WalletLedgerEntry): LedgerEntryDto {
-  return {
-    id: entry.id,
-    walletId: entry.walletId,
-    transactionId: entry.transactionId,
-    direction: entry.direction,
-    money: entry.money.toJSON(),
-    balanceBefore: entry.balanceBefore.toJSON(),
-    balanceAfter: entry.balanceAfter.toJSON(),
-    createdAt: entry.createdAt.toISOString(),
-  };
 }
