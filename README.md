@@ -79,19 +79,7 @@ No host, endpoints de infra usam `localhost` (não `localstack`):
 
 ### Verificar que está funcionando
 
-```bash
-curl -s http://localhost:3000/health/ready | jq
-
-curl -s -X POST http://localhost:3000/wallets \
-  -H 'Content-Type: application/json' \
-  -d '{"playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","initialBalance":{"amount":"100.00","currency":"BRL"}}' | jq
-
-# substituir WALLET_ID pelo id retornado
-curl -s -X POST http://localhost:3000/wagering/transactions \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: provider-a:bet-1' \
-  -d '{"providerId":"provider-a","externalTransactionId":"bet-1","playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","walletId":"WALLET_ID","roundId":"round-1","gameId":"game-1","kind":"BET","money":{"amount":"10.00","currency":"BRL"}}' | jq
-```
+Com a stack no ar (`docker compose up`), use o [smoke test](#smoke-test-manual) no final deste README.
 
 ## Serviços e portas
 
@@ -212,3 +200,86 @@ Todo teste de integração/concorrência confere `wallet.balance == saldo recons
 | `GET` | `/metrics` |
 
 Status HTTP, códigos de falha, fluxos SQS e trade-offs: [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Smoke test manual
+
+Roteiro para exercitar HTTP, ledger, reconciliação, métricas e entrada via SQS. Copie e cole no terminal (bash).
+
+**Pré-requisitos:** stack rodando (Opção 1: `docker compose up`), `curl` e `jq` no host.
+
+Saldo esperado ao final: **140.00 BRL** (100 abertura − 25 bet + 50 win + 25 refund − 10 bet SQS).
+
+```bash
+PLAYER_ID="0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1"
+
+# 1. Health
+curl -s http://localhost:3000/health/live | jq
+curl -s http://localhost:3000/health/ready | jq
+
+# 2. Criar wallet
+WALLET=$(curl -s -X POST http://localhost:3000/wallets \
+  -H 'Content-Type: application/json' \
+  -d "{\"playerId\":\"$PLAYER_ID\",\"initialBalance\":{\"amount\":\"100.00\",\"currency\":\"BRL\"}}")
+echo "$WALLET" | jq
+WALLET_ID=$(echo "$WALLET" | jq -r .id)
+
+# 3. BET (−25.00 → saldo 75.00)
+curl -s -X POST http://localhost:3000/wagering/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: provider-a:bet-001' \
+  -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"bet-001\",\"playerId\":\"$PLAYER_ID\",\"walletId\":\"$WALLET_ID\",\"roundId\":\"round-1\",\"gameId\":\"game-1\",\"kind\":\"BET\",\"money\":{\"amount\":\"25.00\",\"currency\":\"BRL\"}}" | jq
+
+# 4. WIN (+50.00 → saldo 125.00)
+curl -s -X POST http://localhost:3000/wagering/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: provider-a:win-001' \
+  -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"win-001\",\"playerId\":\"$PLAYER_ID\",\"walletId\":\"$WALLET_ID\",\"roundId\":\"round-1\",\"gameId\":\"game-1\",\"kind\":\"WIN\",\"money\":{\"amount\":\"50.00\",\"currency\":\"BRL\"}}" | jq
+
+# 5. REFUND referenciando bet-001 (+25.00 → saldo 150.00)
+curl -s -X POST http://localhost:3000/wagering/transactions \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: provider-a:refund-001' \
+  -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"refund-001\",\"playerId\":\"$PLAYER_ID\",\"walletId\":\"$WALLET_ID\",\"roundId\":\"round-1\",\"gameId\":\"game-1\",\"kind\":\"REFUND\",\"money\":{\"amount\":\"25.00\",\"currency\":\"BRL\"},\"referenceExternalTransactionId\":\"bet-001\"}" | jq
+
+# 6. Saldo e ledger
+curl -s "http://localhost:3000/wallets/$WALLET_ID" | jq
+curl -s "http://localhost:3000/wallets/$WALLET_ID/ledger?limit=50" | jq
+
+# 7. Reconciliação (consistent: true)
+curl -s -X POST "http://localhost:3000/wallets/$WALLET_ID/reconciliation" | jq
+
+# 8. Métricas
+curl -s http://localhost:3000/metrics | head -20
+
+# 9. BET via SQS (−10.00 → saldo 140.00) — consumer processa em alguns segundos
+docker compose exec localstack awslocal sqs send-message \
+  --queue-url http://localhost:4566/000000000000/wager-transactions.fifo \
+  --message-body "$(cat <<EOF
+{
+  "messageId": "manual-msg-1",
+  "type": "WagerTransactionRequested",
+  "occurredAt": "2026-06-01T12:00:00.000Z",
+  "data": {
+    "idempotencyKey": "provider-a:sqs-bet-1",
+    "providerId": "provider-a",
+    "externalTransactionId": "sqs-bet-1",
+    "playerId": "$PLAYER_ID",
+    "walletId": "$WALLET_ID",
+    "roundId": "round-1",
+    "gameId": "game-1",
+    "kind": "BET",
+    "money": { "amount": "10.00", "currency": "BRL" }
+  }
+}
+EOF
+)" \
+  --message-group-id "$WALLET_ID" \
+  --message-deduplication-id "manual-msg-1-$(date +%s)"
+
+# conferir saldo após o consumer processar
+sleep 3
+curl -s "http://localhost:3000/wallets/$WALLET_ID" | jq
+curl -s "http://localhost:3000/providers/provider-a/wagering/transactions/sqs-bet-1" | jq
+```
+
+Sem `jq`, remova `| jq` e copie o `id` da wallet manualmente para `WALLET_ID`.
