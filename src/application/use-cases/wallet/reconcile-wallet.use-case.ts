@@ -6,7 +6,7 @@ import {
   ReconcileWalletQuery,
   ReconciliationResultDto,
 } from '../shared/use-case.types.js';
-import { WalletNotFoundError } from './get-wallet.use-case.js';
+import { WalletNotFoundError } from './wallet.errors.js';
 
 export class ReconcileWalletUseCase {
   constructor(

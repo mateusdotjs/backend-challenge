@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { ProcessWagerTransactionUseCase } from '../../application/use-cases/wagering/process-wager-transaction.use-case.js';
-import { PayloadConflictError } from '../../application/use-cases/wagering/process-wager-transaction.use-case.js';
+import { PayloadConflictError } from '../../application/use-cases/wagering/wagering.errors.js';
 import {
   ProcessWagerTransactionCommand,
   ProcessTransactionResultDto,

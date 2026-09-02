@@ -10,8 +10,10 @@ import { Response } from 'express';
 
 import { OpeningTransactionForbiddenError } from '../../../domain/wagering/wager-transaction.errors.js';
 import { ReferenceMissingError } from '../../../domain/wagering/wager-transaction.errors.js';
-import { WagerTransactionNotFoundError } from '../../../application/use-cases/wagering/get-wager-transaction-by-id.use-case.js';
-import { PayloadConflictError } from '../../../application/use-cases/wagering/process-wager-transaction.use-case.js';
+import {
+  PayloadConflictError,
+  WagerTransactionNotFoundError,
+} from '../../../application/use-cases/wagering/wagering.errors.js';
 
 interface ErrorBody {
   code: string;

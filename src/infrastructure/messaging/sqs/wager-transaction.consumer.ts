@@ -19,7 +19,7 @@ import { WagerTransactionStatus } from '../../../domain/wagering/wager-transacti
 import { type InboxRepositoryPort } from '../../../application/ports/repositories/inbox-repository.port.js';
 import { type UnitOfWorkPort } from '../../../application/ports/unit-of-work.port.js';
 import { type ClockPort } from '../../../application/ports/clock.port.js';
-import { PayloadConflictError } from '../../../application/use-cases/wagering/process-wager-transaction.use-case.js';
+import { PayloadConflictError } from '../../../application/use-cases/wagering/wagering.errors.js';
 import { ProcessWagerTransactionCommand } from '../../../application/use-cases/shared/use-case.types.js';
 import { computePayloadHash } from '../../../application/use-cases/shared/payload-hash.js';
 import {

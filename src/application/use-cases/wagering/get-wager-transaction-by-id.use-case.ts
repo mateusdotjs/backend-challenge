@@ -1,13 +1,7 @@
 import { WagerTransaction } from '../../../domain/wagering/wager-transaction.js';
 import { WagerTransactionRepositoryPort } from '../../ports/repositories/wager-transaction-repository.port.js';
 import { WagerTransactionDto } from '../shared/use-case.types.js';
-
-export class WagerTransactionNotFoundError extends Error {
-  constructor(detail: string) {
-    super(`WagerTransaction not found: ${detail}`);
-    this.name = 'WagerTransactionNotFoundError';
-  }
-}
+import { WagerTransactionNotFoundError } from './wagering.errors.js';
 
 export class GetWagerTransactionByIdUseCase {
   constructor(private readonly wagerTxRepo: WagerTransactionRepositoryPort) {}

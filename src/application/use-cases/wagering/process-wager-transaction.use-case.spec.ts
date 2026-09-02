@@ -19,8 +19,8 @@ import type { ClockPort } from '../../ports/clock.port.js';
 import type { ProcessWagerTransactionCommand } from '../shared/use-case.types.js';
 import {
   PayloadConflictError,
-  ProcessWagerTransactionUseCase,
-} from './process-wager-transaction.use-case.js';
+} from './wagering.errors.js';
+import { ProcessWagerTransactionUseCase } from './process-wager-transaction.use-case.js';
 
 const NOW = new Date('2026-01-01T00:00:00.000Z');
 

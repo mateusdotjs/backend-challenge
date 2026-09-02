@@ -27,36 +27,11 @@ import {
   ProcessTransactionResultDto,
 } from '../shared/use-case.types.js';
 import { computePayloadHash } from '../shared/payload-hash.js';
-
-// ---------------------------------------------------------------------------
-// Application-layer errors (not domain errors)
-// ---------------------------------------------------------------------------
-
-export class PayloadConflictError extends Error {
-  constructor(idempotencyKey: string) {
-    super(
-      `Idempotency key "${idempotencyKey}" already exists with a different payload`,
-    );
-    this.name = 'PayloadConflictError';
-  }
-}
-
-export class WalletNotFoundError extends Error {
-  constructor(walletId: string) {
-    super(`Wallet not found: ${walletId}`);
-    this.name = 'WalletNotFoundError';
-  }
-}
-
-export class ReferenceValidationError extends Error {
-  readonly failureCode: FailureCode;
-
-  constructor(message: string, failureCode: FailureCode) {
-    super(message);
-    this.name = 'ReferenceValidationError';
-    this.failureCode = failureCode;
-  }
-}
+import { WalletNotFoundError } from '../wallet/wallet.errors.js';
+import {
+  PayloadConflictError,
+  ReferenceValidationError,
+} from './wagering.errors.js';
 
 // ---------------------------------------------------------------------------
 // Pending-reference backoff (5 s base, doubles per attempt, cap 5 min)
