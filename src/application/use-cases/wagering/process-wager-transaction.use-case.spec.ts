@@ -406,4 +406,78 @@ describe('ProcessWagerTransactionUseCase', () => {
     expect(result.status).toBe(WagerTransactionStatus.Rejected);
     expect(result.failureCode).toBe(FailureCode.ReversalWouldNegateBalance);
   });
+
+  it('rejects WIN when reference is not a BET', async () => {
+    const { useCase } = createHarness('50.00');
+
+    await useCase.execute(command({
+      idempotencyKey: 'provider-a:win-1',
+      externalTransactionId: 'win-1',
+      kind: WagerTransactionKind.Win,
+      money: { amount: '10.00', currency: 'BRL' },
+    }));
+
+    const result = await useCase.execute(command({
+      idempotencyKey: 'provider-a:win-2',
+      externalTransactionId: 'win-2',
+      kind: WagerTransactionKind.Win,
+      money: { amount: '5.00', currency: 'BRL' },
+      referenceExternalTransactionId: 'win-1',
+    }));
+
+    expect(result.status).toBe(WagerTransactionStatus.Rejected);
+    expect(result.failureCode).toBe(FailureCode.InvalidReference);
+  });
+
+  it('PENDING_REFERENCE returns actual wallet balance, not zero', async () => {
+    const { useCase } = createHarness('75.00');
+
+    const result = await useCase.execute(
+      command({
+        idempotencyKey: 'provider-a:refund-pending',
+        externalTransactionId: 'refund-pending',
+        kind: WagerTransactionKind.Refund,
+        money: { amount: '10.00', currency: 'BRL' },
+        referenceExternalTransactionId: 'missing-bet',
+      }),
+    );
+
+    expect(result.status).toBe(WagerTransactionStatus.PendingReference);
+    expect(result.balance.amount).toBe('75.00');
+  });
+
+  it('allows REFUND on BET even when a WIN previously referenced the same BET', async () => {
+    const { useCase, getWallet, ledgerEntries } = createHarness('100.00');
+
+    // BET: debit 30
+    await useCase.execute(command({
+      idempotencyKey: 'provider-a:bet-1',
+      externalTransactionId: 'bet-1',
+      kind: WagerTransactionKind.Bet,
+      money: { amount: '30.00', currency: 'BRL' },
+    }));
+
+    // WIN referencing the BET — stores referenceTransactionId pointing to bet-1
+    await useCase.execute(command({
+      idempotencyKey: 'provider-a:win-1',
+      externalTransactionId: 'win-1',
+      kind: WagerTransactionKind.Win,
+      money: { amount: '50.00', currency: 'BRL' },
+      referenceExternalTransactionId: 'bet-1',
+    }));
+
+    // REFUND referencing the same BET — must NOT be rejected as REVERSAL_ALREADY_APPLIED
+    const result = await useCase.execute(command({
+      idempotencyKey: 'provider-a:refund-1',
+      externalTransactionId: 'refund-1',
+      kind: WagerTransactionKind.Refund,
+      money: { amount: '30.00', currency: 'BRL' },
+      referenceExternalTransactionId: 'bet-1',
+    }));
+
+    expect(result.status).toBe(WagerTransactionStatus.Processed);
+    // balance: 100 - 30 (bet) + 50 (win) + 30 (refund) = 150
+    expect(getWallet().balance.toString()).toBe('150.00');
+    expect(ledgerEntries).toHaveLength(3);
+  });
 });

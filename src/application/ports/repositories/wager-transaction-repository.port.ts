@@ -39,8 +39,13 @@ export interface WagerTransactionRepositoryPort {
   ): Promise<WagerTransaction[]>;
 
   /**
-   * Return the first PROCESSED transaction whose `referenceTransactionId`
-   * matches `referenceTransactionId`, or null if none exists.
+   * Return the first PROCESSED REFUND or ROLLBACK transaction whose
+   * `referenceTransactionId` matches `referenceTransactionId`, or null if
+   * none exists.
+   *
+   * Only REFUND and ROLLBACK are considered reversals. WIN transactions that
+   * reference a BET (allowed by the domain) are intentionally excluded so
+   * they do not block a subsequent REFUND on the same BET.
    *
    * Used to enforce the "a reversal cannot be applied twice" rule when two
    * different external transactions (different idempotency keys) both attempt

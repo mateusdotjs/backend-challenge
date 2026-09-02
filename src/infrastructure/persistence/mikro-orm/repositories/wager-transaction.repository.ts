@@ -3,7 +3,10 @@ import { EntityManager, LockMode } from '@mikro-orm/core';
 
 import { Money } from '../../../../domain/shared/money/money.js';
 import { WagerTransaction } from '../../../../domain/wagering/wager-transaction.js';
-import { WagerTransactionStatus } from '../../../../domain/wagering/wager-transaction.enums.js';
+import {
+  WagerTransactionKind,
+  WagerTransactionStatus,
+} from '../../../../domain/wagering/wager-transaction.enums.js';
 import {
   WagerTransactionRepositoryPort,
   FindPendingReferenceParams,
@@ -82,6 +85,7 @@ export class WagerTransactionMikroOrmRepository
     const entity = await this.em.findOne(WagerTransactionEntity, {
       referenceTransactionId,
       status: WagerTransactionStatus.Processed,
+      kind: { $in: [WagerTransactionKind.Refund, WagerTransactionKind.Rollback] },
     });
     return entity ? this.toDomain(entity) : null;
   }

@@ -162,7 +162,7 @@ export class ProcessWagerTransactionUseCase {
       );
 
       if (!reference) {
-        return this.persistPendingReference(tx, now);
+        return this.persistPendingReference(tx, wallet, now);
       }
 
       // Validate reference compatibility — on failure, save as REJECTED
@@ -300,6 +300,7 @@ export class ProcessWagerTransactionUseCase {
 
   private async persistPendingReference(
     tx: WagerTransaction,
+    wallet: Wallet,
     now: Date,
   ): Promise<ProcessTransactionResultDto> {
     await this.scheduleReferenceRetry(tx, now);
@@ -312,11 +313,10 @@ export class ProcessWagerTransactionUseCase {
       ),
     );
 
-    // No wallet balance available yet — return zero for the wallet's currency
     return {
       transactionId: tx.id,
       status: tx.status,
-      balance: Money.zero(tx.money.currency).toJSON(),
+      balance: wallet.balance.toJSON(),
       idempotentReplay: false,
       failureCode: null,
     };
@@ -409,6 +409,23 @@ export class ProcessWagerTransactionUseCase {
       if (!reference.money.equals(tx.money)) {
         throw new ReferenceValidationError(
           `REFUND amount must equal the referenced BET amount`,
+          FailureCode.InvalidReference,
+        );
+      }
+    }
+
+    // WIN: when a reference is provided, it must be a processed BET.
+    // The WIN amount does not need to equal the BET amount (a WIN can be larger).
+    if (tx.kind === WagerTransactionKind.Win) {
+      if (reference.kind !== WagerTransactionKind.Bet) {
+        throw new ReferenceValidationError(
+          `WIN reference must be a BET, got ${reference.kind}`,
+          FailureCode.InvalidReference,
+        );
+      }
+      if (reference.status !== WagerTransactionStatus.Processed) {
+        throw new ReferenceValidationError(
+          `WIN reference must be PROCESSED, got ${reference.status}`,
           FailureCode.InvalidReference,
         );
       }

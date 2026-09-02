@@ -72,6 +72,7 @@ qualquer não-terminal ──► FAILED
 ## Interpretações além do enunciado
 
 - `WIN` pode omitir referência e ser processado na hora. Se trouxer `referenceExternalTransactionId` ausente, vai para `PENDING_REFERENCE`.
+- `WIN` com referência deve apontar para uma `BET` `PROCESSED` do mesmo escopo (provider, player, wallet, moeda, rodada). O montante do `WIN` não precisa ser igual ao da `BET`.
 - Uma transação referenciada aceita no máximo uma reversão `PROCESSED` (`REFUND` ou `ROLLBACK`), não uma de cada tipo.
 - Replay idempotente devolve o saldo observado na aplicação original (`observedBalance`).
 - Moeda única na prática (`BRL`); o modelo continua multi-moeda e rejeita conflito de moeda.

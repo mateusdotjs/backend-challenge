@@ -96,11 +96,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     if (this.isUniqueViolation(exception)) {
+      const constraint = this.getConstraintName(exception);
+      if (constraint === 'wallet_player_id_currency_unique') {
+        return {
+          status: HttpStatus.CONFLICT,
+          body: {
+            code: 'WALLET_CONFLICT',
+            message: 'A wallet already exists for this player and currency',
+          },
+        };
+      }
       return {
         status: HttpStatus.CONFLICT,
         body: {
-          code: 'WALLET_CONFLICT',
-          message: 'A wallet already exists for this player and currency',
+          code: 'CONFLICT',
+          message: `Unique constraint violated${constraint ? `: ${constraint}` : ''}`,
         },
       };
     }
@@ -176,9 +186,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (typeof exception !== 'object' || exception === null) {
       return false;
     }
-
-    const err = exception as { code?: string; constraint?: string };
+    const err = exception as { code?: string };
     return err.code === '23505';
+  }
+
+  private getConstraintName(exception: unknown): string | undefined {
+    if (typeof exception !== 'object' || exception === null) {
+      return undefined;
+    }
+    const err = exception as { constraint?: string; cause?: { constraint?: string } };
+    return err.constraint ?? err.cause?.constraint;
   }
 
   private isInfrastructureError(exception: unknown): boolean {
