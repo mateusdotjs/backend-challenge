@@ -1,7 +1,6 @@
 import {
   Inject,
   Injectable,
-  Logger,
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from '@nestjs/common';
@@ -11,6 +10,10 @@ import { type OutboxRepositoryPort } from '../../../application/ports/repositori
 import { type UnitOfWorkPort } from '../../../application/ports/unit-of-work.port.js';
 import { type EventPublisherPort } from '../../../application/ports/event-publisher.port.js';
 import { type ClockPort } from '../../../application/ports/clock.port.js';
+import { runWithLogContextAsync } from '../../logging/log-context.js';
+import { StructuredLogger } from '../../logging/structured-logger.js';
+import { MetricsService } from '../../metrics/metrics.service.js';
+import { OutboxBacklogProbe } from '../../metrics/outbox-backlog.probe.js';
 
 import {
   OUTBOX_REPOSITORY,
@@ -28,7 +31,7 @@ function sleep(ms: number): Promise<void> {
 export class OutboxPublisherWorker
   implements OnApplicationBootstrap, OnApplicationShutdown
 {
-  private readonly logger = new Logger(OutboxPublisherWorker.name);
+  private readonly logger = new StructuredLogger(OutboxPublisherWorker.name);
   private stopped = false;
   private pollPromise: Promise<void> | null = null;
 
@@ -38,6 +41,8 @@ export class OutboxPublisherWorker
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWorkPort,
     @Inject(EVENT_PUBLISHER) private readonly eventPublisher: EventPublisherPort,
     @Inject(CLOCK) private readonly clock: ClockPort,
+    private readonly metrics: MetricsService,
+    private readonly outboxBacklog: OutboxBacklogProbe,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -53,7 +58,15 @@ export class OutboxPublisherWorker
 
   private async startPolling(): Promise<void> {
     while (!this.stopped) {
-      await this.pollOnce();
+      try {
+        await this.pollOnce();
+      } catch (err) {
+        this.logger.error('outbox_poll_failed', {}, err);
+        const pollIntervalMs = Number(
+          process.env['OUTBOX_POLL_INTERVAL_MS'] ?? 1000,
+        );
+        await this.interruptibleSleep(pollIntervalMs);
+      }
     }
   }
 
@@ -61,6 +74,8 @@ export class OutboxPublisherWorker
     const batchSize = Number(process.env['OUTBOX_BATCH_SIZE'] ?? 10);
     const pollIntervalMs = Number(process.env['OUTBOX_POLL_INTERVAL_MS'] ?? 1000);
     const now = this.clock.now();
+
+    await this.outboxBacklog.refresh();
 
     const messages = await this.uow.runInTransaction(async () =>
       this.outboxRepo.findPending({ limit: batchSize, now }),
@@ -80,22 +95,50 @@ export class OutboxPublisherWorker
   }
 
   private async processMessage(message: OutboxMessage): Promise<void> {
+    const fields = outboxLogFields(message);
+
+    await runWithLogContextAsync(
+      {
+        correlationId:
+          typeof fields.correlationId === 'string'
+            ? fields.correlationId
+            : undefined,
+        transactionId:
+          typeof fields.transactionId === 'string'
+            ? fields.transactionId
+            : undefined,
+      },
+      () => this.publishMessage(message, fields),
+    );
+  }
+
+  private async publishMessage(
+    message: OutboxMessage,
+    fields: Record<string, unknown>,
+  ): Promise<void> {
+    const eventType = message.eventType;
     const now = this.clock.now();
+
+    this.metrics.incrementOutboxPublishAttempt(eventType);
+    this.logger.log('outbox_publish_attempt', fields);
 
     try {
       await this.eventPublisher.publish(message);
       message.markPublished(now);
+      this.metrics.incrementOutboxPublished(eventType);
+      this.logger.log('outbox_published', fields);
     } catch (err) {
-      this.logger.error(
-        `[OutboxPublisherWorker] SQS publish failed for outboxId="${message.id}" eventType="${message.eventType}"`,
-        err instanceof Error ? err.stack : String(err),
-      );
+      this.metrics.incrementOutboxPublishFailed(eventType);
       message.scheduleRetry(now);
+      this.metrics.incrementOutboxPublishRetry(eventType);
+      this.logger.error('outbox_publish_failed', fields, err);
     }
 
     await this.uow.runInTransaction(async () => {
       await this.outboxRepo.save(message);
     });
+
+    await this.outboxBacklog.refresh();
   }
 
   private async interruptibleSleep(ms: number): Promise<void> {
@@ -108,4 +151,26 @@ export class OutboxPublisherWorker
       remaining -= waitMs;
     }
   }
+}
+
+function outboxLogFields(message: OutboxMessage): Record<string, unknown> {
+  const payload = message.payload;
+  const data = payload['data'];
+  const transactionId =
+    data !== null &&
+    typeof data === 'object' &&
+    'transactionId' in data &&
+    typeof (data as { transactionId?: unknown }).transactionId === 'string'
+      ? (data as { transactionId: string }).transactionId
+      : undefined;
+
+  return {
+    outboxId: message.id,
+    eventType: message.eventType,
+    correlationId:
+      typeof payload['correlationId'] === 'string'
+        ? payload['correlationId']
+        : undefined,
+    transactionId,
+  };
 }

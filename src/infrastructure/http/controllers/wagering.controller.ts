@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Post,
@@ -10,7 +11,10 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 
-import { ProcessWagerTransactionUseCase } from '../../../application/use-cases/wagering/process-wager-transaction.use-case.js';
+import {
+  PROCESS_WAGER_TRANSACTION_ADAPTER,
+  ProcessWagerTransactionAdapter,
+} from '../../../infrastructure/wagering/process-wager-transaction.adapter.js';
 import { GetWagerTransactionByIdUseCase } from '../../../application/use-cases/wagering/get-wager-transaction-by-id.use-case.js';
 import { ProcessTransactionResultDto } from '../../../application/use-cases/shared/use-case.types.js';
 import { WagerTransactionStatus } from '../../../domain/wagering/wager-transaction.enums.js';
@@ -21,7 +25,8 @@ import { toProcessWagerTransactionCommand } from '../mappers/wagering.mapper.js'
 @Controller('wagering')
 export class WageringController {
   constructor(
-    private readonly processWagerTransaction: ProcessWagerTransactionUseCase,
+    @Inject(PROCESS_WAGER_TRANSACTION_ADAPTER)
+    private readonly processWagerTransaction: ProcessWagerTransactionAdapter,
     private readonly getWagerTransactionById: GetWagerTransactionByIdUseCase,
   ) {}
 

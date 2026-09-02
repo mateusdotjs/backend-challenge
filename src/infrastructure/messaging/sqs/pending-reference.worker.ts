@@ -5,10 +5,19 @@ import {
   OnApplicationShutdown,
 } from '@nestjs/common';
 
+import { FailureCode } from '../../../domain/shared/failure-code.js';
+import { WagerTransactionStatus } from '../../../domain/wagering/wager-transaction.enums.js';
 import { type WagerTransactionRepositoryPort } from '../../../application/ports/repositories/wager-transaction-repository.port.js';
 import { type UnitOfWorkPort } from '../../../application/ports/unit-of-work.port.js';
 import { type ClockPort } from '../../../application/ports/clock.port.js';
-import { ProcessWagerTransactionUseCase } from '../../../application/use-cases/wagering/process-wager-transaction.use-case.js';
+import { runWithLogContextAsync } from '../../logging/log-context.js';
+import { StructuredLogger } from '../../logging/structured-logger.js';
+import { MetricsService } from '../../metrics/metrics.service.js';
+import { isWalletConcurrencyError } from '../../metrics/wallet-concurrency.js';
+import {
+  PROCESS_WAGER_TRANSACTION_ADAPTER,
+  ProcessWagerTransactionAdapter,
+} from '../../wagering/process-wager-transaction.adapter.js';
 
 import {
   UNIT_OF_WORK,
@@ -24,6 +33,7 @@ function sleep(ms: number): Promise<void> {
 export class PendingReferenceWorker
   implements OnApplicationBootstrap, OnApplicationShutdown
 {
+  private readonly logger = new StructuredLogger(PendingReferenceWorker.name);
   private stopped = false;
   private pollPromise: Promise<void> | null = null;
 
@@ -31,8 +41,10 @@ export class PendingReferenceWorker
     @Inject(WAGER_TRANSACTION_REPOSITORY)
     private readonly wagerTxRepo: WagerTransactionRepositoryPort,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWorkPort,
-    private readonly processWagerTransaction: ProcessWagerTransactionUseCase,
+    @Inject(PROCESS_WAGER_TRANSACTION_ADAPTER)
+    private readonly processWagerTransaction: ProcessWagerTransactionAdapter,
     @Inject(CLOCK) private readonly clock: ClockPort,
+    private readonly metrics: MetricsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -61,32 +73,113 @@ export class PendingReferenceWorker
     let processed = 0;
 
     while (!this.stopped && processed < batchSize) {
-      const didWork = await this.uow.runInTransaction(async () => {
-        const transactions = await this.wagerTxRepo.findPendingReference({
-          limit: 1,
-          now,
+      let transactionId: string | undefined;
+      let walletId: string | undefined;
+      let providerId: string | undefined;
+
+      try {
+        const didWork = await this.uow.runInTransaction(async () => {
+          const transactions = await this.wagerTxRepo.findPendingReference({
+            limit: 1,
+            now,
+          });
+
+          if (transactions.length === 0) {
+            return false;
+          }
+
+          const tx = transactions[0];
+          transactionId = tx.id;
+          walletId = tx.walletId;
+          providerId = tx.providerId;
+          const statusBefore = tx.status;
+
+          await runWithLogContextAsync(
+            {
+              transactionId: tx.id,
+              walletId: tx.walletId,
+              providerId: tx.providerId,
+            },
+            () =>
+              this.processWagerTransaction.reprocessPendingReferenceWithinTransaction(
+                tx.id,
+              ),
+          );
+
+          const updated = await this.wagerTxRepo.findById(tx.id);
+          if (updated) {
+            this.recordOutcome(statusBefore, updated);
+          }
+
+          return true;
         });
 
-        if (transactions.length === 0) {
-          return false;
+        if (!didWork) {
+          break;
         }
 
-        await this.processWagerTransaction.reprocessPendingReferenceWithinTransaction(
-          transactions[0].id,
+        processed++;
+      } catch (err) {
+        this.logger.error(
+          'pending_reference_processing_failed',
+          { transactionId, walletId, providerId },
+          err,
         );
-
-        return true;
-      });
-
-      if (!didWork) {
-        break;
+        if (isWalletConcurrencyError(err)) {
+          this.metrics.incrementLockConflict();
+          this.logger.warn('wallet_concurrency_conflict', {
+            transactionId,
+            walletId,
+            providerId,
+          });
+        }
+        throw err;
       }
-
-      processed++;
     }
 
     if (processed === 0) {
       await this.interruptibleSleep(pollIntervalMs);
+    }
+  }
+
+  private recordOutcome(
+    statusBefore: WagerTransactionStatus,
+    updated: {
+      id: string;
+      walletId: string;
+      providerId: string;
+      status: WagerTransactionStatus;
+      failureCode?: FailureCode;
+    },
+  ): void {
+    const fields = {
+      transactionId: updated.id,
+      walletId: updated.walletId,
+      providerId: updated.providerId,
+    };
+
+    if (
+      updated.status === WagerTransactionStatus.PendingReference &&
+      statusBefore === WagerTransactionStatus.PendingReference
+    ) {
+      this.logger.log('pending_reference_retry', fields);
+      this.metrics.incrementRetry();
+      return;
+    }
+
+    if (updated.status === WagerTransactionStatus.Processed) {
+      this.logger.log('pending_reference_resolved', fields);
+      return;
+    }
+
+    if (
+      updated.status === WagerTransactionStatus.Rejected &&
+      updated.failureCode === FailureCode.ReferenceNotFound
+    ) {
+      this.logger.log('pending_reference_exhausted', {
+        ...fields,
+        failureCode: updated.failureCode,
+      });
     }
   }
 

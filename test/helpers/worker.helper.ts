@@ -2,7 +2,9 @@ import type { INestApplication } from '@nestjs/common';
 import type { Message } from '@aws-sdk/client-sqs';
 
 import type { ProcessWagerTransactionCommand } from '../../src/application/use-cases/shared/use-case.types.js';
-import { ProcessWagerTransactionUseCase } from '../../src/application/use-cases/wagering/process-wager-transaction.use-case.js';
+import { PROCESS_WAGER_TRANSACTION_ADAPTER } from '../../src/infrastructure/wagering/process-wager-transaction.adapter.js';
+import { MetricsService } from '../../src/infrastructure/metrics/metrics.service.js';
+import { OutboxBacklogProbe } from '../../src/infrastructure/metrics/outbox-backlog.probe.js';
 import { WagerTransactionConsumer } from '../../src/infrastructure/messaging/sqs/wager-transaction.consumer.js';
 import { OutboxPublisherWorker } from '../../src/infrastructure/messaging/sqs/outbox-publisher.worker.js';
 import { PendingReferenceWorker } from '../../src/infrastructure/messaging/sqs/pending-reference.worker.js';
@@ -21,8 +23,9 @@ function createConsumer(app: INestApplication): WagerTransactionConsumer {
     app.get(SQS_CLIENT),
     app.get(INBOX_REPOSITORY),
     app.get(UNIT_OF_WORK),
-    app.get(ProcessWagerTransactionUseCase),
+    app.get(PROCESS_WAGER_TRANSACTION_ADAPTER),
     app.get(CLOCK),
+    app.get(MetricsService),
   );
 }
 
@@ -32,6 +35,8 @@ function createOutboxWorker(app: INestApplication): OutboxPublisherWorker {
     app.get(UNIT_OF_WORK),
     app.get(EVENT_PUBLISHER),
     app.get(CLOCK),
+    app.get(MetricsService),
+    app.get(OutboxBacklogProbe),
   );
 }
 
@@ -41,8 +46,9 @@ function createPendingReferenceWorker(
   return new PendingReferenceWorker(
     app.get(WAGER_TRANSACTION_REPOSITORY),
     app.get(UNIT_OF_WORK),
-    app.get(ProcessWagerTransactionUseCase),
+    app.get(PROCESS_WAGER_TRANSACTION_ADAPTER),
     app.get(CLOCK),
+    app.get(MetricsService),
   );
 }
 
