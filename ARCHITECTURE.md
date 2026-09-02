@@ -18,6 +18,25 @@ HTTP / SQS
 
 HTTP e o consumidor SQS chamam o mesmo use case de processamento.
 
+## Fluxo de processamento
+
+O `ProcessWagerTransactionUseCase` tem três pontos de entrada, cada um com uma fronteira transacional diferente:
+
+- **`execute()`** — chamado pela API HTTP. Faz um check de idempotência rápido *fora* da transação para evitar abrir lock desnecessariamente. Se a transação já existe, devolve o resultado original sem abrir a transação. Se não, abre a transação e repete o check dentro (para cobrir o race de dois requests simultâneos com a mesma key passando pelo fast-path ao mesmo tempo).
+- **`executeWithinTransaction()`** — chamado pelo consumidor SQS, que já abriu a transação para incluir o `InboxMessage` no mesmo commit. Não abre transação própria.
+- **`reprocessPendingReferenceWithinTransaction()`** — chamado pelo worker de pending-reference, que já abriu a transação. Reprocessa uma `WagerTransaction` existente em `PENDING_REFERENCE` assim que a referência aparecer.
+
+Dentro da transação, o caminho feliz é:
+
+1. `SELECT FOR UPDATE` na wallet — serializa todas as operações da mesma wallet
+2. Check de idempotência definitivo — cobre o race de requests simultâneos
+3. `WagerTransaction.create()` em `PENDING`
+4. Se exige referência: busca a referência pelo `(providerId, referenceExternalTransactionId)`. Se não existe ainda, persiste como `PENDING_REFERENCE` e encerra.
+5. `validateReferenceCompatibility` — verifica tipo, rodada, escopo, moeda e valor
+6. Para REFUND/ROLLBACK: verifica se já existe outra reversão PROCESSED sobre a mesma referência
+7. Aplica a operação financeira na wallet (`debit` ou `credit`), gera o lançamento no ledger
+8. Grava `WagerTransaction` como `PROCESSED`, ledger e outbox — tudo no mesmo commit
+
 ## Autenticação
 
 Não implementada. Autenticação não pontua no desafio; o tempo foi para correção financeira, concorrência e idempotência.
@@ -30,7 +49,12 @@ Desenho que seria adotado:
 
 ## Persistência
 
-**MikroORM** — Unit of Work e `LockMode` explícitos, alinhados ao desafio.
+**MikroORM** — escolhido por três razões concretas em relação ao TypeORM:
+
+- **Unit of Work**: mudanças acumulam em memória durante a requisição e são persistidas com um único `flush()`. Sem `save()` espalhados pelo código; o domínio não precisa saber quando ou como persiste.
+- **`LockMode` explícito**: `PESSIMISTIC_WRITE` (FOR UPDATE) e `PESSIMISTIC_PARTIAL_WRITE` (SKIP LOCKED) ficam visíveis no código de aplicação. No TypeORM, o equivalente exige SQL raw ou `setLock`.
+- **`EntityManager.transactional()`**: propaga o contexto transacional via AsyncLocalStorage sem passar `em` entre camadas. A camada de aplicação não importa nada de ORM.
+- **Identity Map**: a mesma entidade carregada duas vezes na mesma requisição retorna o mesmo objeto, evitando writes redundantes.
 
 **Money:** `big.js` no domínio (nunca `number`). Na persistência, valor e moeda em colunas separadas (`numeric(18,2)` + ISO-4217). Reidratação via `Money.from`. Serialização sempre com 2 casas.
 
@@ -73,7 +97,8 @@ qualquer não-terminal ──► FAILED
 
 - `WIN` pode omitir referência e ser processado na hora. Se trouxer `referenceExternalTransactionId` ausente, vai para `PENDING_REFERENCE`.
 - `WIN` com referência deve apontar para uma `BET` `PROCESSED` do mesmo escopo (provider, player, wallet, moeda, rodada). O montante do `WIN` não precisa ser igual ao da `BET`.
-- Uma transação referenciada aceita no máximo uma reversão `PROCESSED` (`REFUND` ou `ROLLBACK`), não uma de cada tipo.
+- **WIN não é reversão para fins de deduplicação.** O lookup de reversão (`findProcessedReversalByReferenceId`) filtra explicitamente por `kind IN (REFUND, ROLLBACK)`. Isso permite a sequência `BET → WIN(ref=BET) → REFUND(ref=BET)` — o WIN não bloqueia o REFUND posterior, porque WIN não reverte saldo, apenas o credita opcionalmente referenciando a rodada.
+- **Deduplicação de reversão é conservativa.** O enunciado diz "pelo mesmo tipo de operação"; a implementação bloqueia qualquer reversão PROCESSED sobre a mesma referência, independentemente do tipo. Se existe um REFUND processado sobre uma BET, um ROLLBACK posterior sobre a mesma BET também é bloqueado. Essa decisão evita crédito duplo não intencional.
 - Replay idempotente devolve o saldo observado na aplicação original (`observedBalance`).
 - Moeda única na prática (`BRL`); o modelo continua multi-moeda e rejeita conflito de moeda.
 
@@ -172,6 +197,7 @@ Reconciliação não corrige divergência: devolve `consistent` e a diferença.
 - `version` não participa do `UPDATE`. Suffice o `FOR UPDATE`.
 - Ledger pagina em memória depois de carregar todos os lançamentos da wallet.
 - Submit `422` não inclui `failureCode` no body (está no GET).
+- 409 de unique violation (PostgreSQL `23505`) inspeciona o campo `constraint` do erro: `wallet_player_id_currency_unique` → `WALLET_CONFLICT`; constraint desconhecida → `CONFLICT` com o nome no message. Antes da correção, todo `23505` era mapeado como `WALLET_CONFLICT` mesmo que a violação fosse de outra constraint (ex: idempotency key).
 - Sem Auth/IdP (ver seção de autenticação).
 - Sem OpenTelemetry.
 - `FAILED` existe no modelo; o caminho operacional atual rejeita regra de negócio ou reentrega erro de infra.
