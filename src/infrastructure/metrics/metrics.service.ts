@@ -56,6 +56,10 @@ export class MetricsService {
     this.registry.outboxPublishRetriesTotal.inc({ eventType });
   }
 
+  incrementReconciliationDivergence(walletId: string): void {
+    this.registry.walletReconciliationDivergencesTotal.inc({ walletId });
+  }
+
   render(): string {
     return this.registry.render();
   }

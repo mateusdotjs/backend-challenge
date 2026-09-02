@@ -157,5 +157,4 @@ Reconciliação não corrige divergência: devolve `consistent` e a diferença.
 - Submit `422` não inclui `failureCode` no body (está no GET).
 - Sem Auth/IdP (ver seção de autenticação).
 - Sem OpenTelemetry.
-- Reconciliação não incrementa métrica própria de divergência.
 - `FAILED` existe no modelo; o caminho operacional atual rejeita regra de negócio ou reentrega erro de infra.

@@ -112,4 +112,5 @@ export interface ProcessTransactionResultDto {
   status: WagerTransactionStatus;
   balance: MoneyProps;
   idempotentReplay: boolean;
+  failureCode: FailureCode | null;
 }

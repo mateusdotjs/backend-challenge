@@ -303,6 +303,7 @@ export class ProcessWagerTransactionUseCase {
       status: tx.status,
       balance: Money.zero(tx.money.currency).toJSON(),
       idempotentReplay: false,
+      failureCode: null,
     };
   }
 
@@ -333,6 +334,7 @@ export class ProcessWagerTransactionUseCase {
       status: tx.status,
       balance: balanceAtRejection.toJSON(),
       idempotentReplay: false,
+      failureCode: tx.failureCode ?? null,
     };
   }
 
@@ -719,5 +721,6 @@ function toResult(
     status: tx.status,
     balance: tx.observedBalance?.toJSON() ?? Money.zero(tx.money.currency).toJSON(),
     idempotentReplay,
+    failureCode: tx.failureCode ?? null,
   };
 }

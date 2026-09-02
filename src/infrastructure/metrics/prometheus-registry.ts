@@ -135,6 +135,12 @@ class Histogram {
             : `{le="${bucket}"}`;
         lines.push(`${this.name}_bucket${bucketLabels} ${count}`);
       }
+      // +Inf bucket is required by the Prometheus data model for histogram_quantile
+      const infLabels =
+        base.length > 0
+          ? base.replace('}', ',le="+Inf"}')
+          : `{le="+Inf"}`;
+      lines.push(`${this.name}_bucket${infLabels} ${entry.count}`);
       lines.push(`${this.name}_sum${base} ${entry.sum}`);
       lines.push(`${this.name}_count${base} ${entry.count}`);
     }
@@ -204,6 +210,11 @@ export class PrometheusRegistry {
     'HTTP request duration in seconds',
   );
 
+  readonly walletReconciliationDivergencesTotal = new Counter(
+    'wallet_reconciliation_divergences_total',
+    'Total wallet reconciliation divergences detected',
+  );
+
   render(): string {
     return [
       ...this.wagerTransactionsTotal.render(),
@@ -218,6 +229,7 @@ export class PrometheusRegistry {
       ...this.outboxPublishFailedTotal.render(),
       ...this.outboxPublishRetriesTotal.render(),
       ...this.httpRequestDuration.render(),
+      ...this.walletReconciliationDivergencesTotal.render(),
     ].join('\n');
   }
 }

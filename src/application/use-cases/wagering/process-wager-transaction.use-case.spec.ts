@@ -179,6 +179,7 @@ describe('ProcessWagerTransactionUseCase', () => {
     );
 
     expect(result.status).toBe(WagerTransactionStatus.Rejected);
+    expect(result.failureCode).toBe(FailureCode.InsufficientBalance);
     expect(getWallet().balance.toString()).toBe('10.00');
     expect(ledgerEntries).toHaveLength(0);
   });
@@ -400,5 +401,6 @@ describe('ProcessWagerTransactionUseCase', () => {
     );
 
     expect(result.status).toBe(WagerTransactionStatus.Rejected);
+    expect(result.failureCode).toBe(FailureCode.ReversalWouldNegateBalance);
   });
 });

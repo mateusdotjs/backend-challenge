@@ -89,6 +89,7 @@ describe('integration: HTTP API', () => {
       }),
     );
     expect(rejected.status).toBe(422);
+    expect(rejected.body.failureCode).toBe('INSUFFICIENT_BALANCE');
   });
 
   it('returns pending reference as 202', async () => {

@@ -20,14 +20,19 @@ import {
   toCreateWalletCommand,
   toGetWalletLedgerQuery,
 } from '../mappers/wallet.mapper.js';
+import { MetricsService } from '../../metrics/metrics.service.js';
+import { StructuredLogger } from '../../logging/structured-logger.js';
 
 @Controller('wallets')
 export class WalletController {
+  private readonly logger = new StructuredLogger(WalletController.name);
+
   constructor(
     private readonly createWallet: CreateWalletUseCase,
     private readonly getWallet: GetWalletUseCase,
     private readonly getWalletLedger: GetWalletLedgerUseCase,
     private readonly reconcileWallet: ReconcileWalletUseCase,
+    private readonly metrics: MetricsService,
   ) {}
 
   @Post()
@@ -51,7 +56,20 @@ export class WalletController {
 
   @Post(':walletId/reconciliation')
   @HttpCode(HttpStatus.OK)
-  reconcile(@Param('walletId', ParseUUIDPipe) walletId: string) {
-    return this.reconcileWallet.execute({ walletId });
+  async reconcile(@Param('walletId', ParseUUIDPipe) walletId: string) {
+    const result = await this.reconcileWallet.execute({ walletId });
+
+    if (!result.consistent) {
+      this.logger.warn('reconciliation_divergence', {
+        walletId,
+        storedBalance: result.storedBalance.amount,
+        calculatedBalance: result.calculatedBalance.amount,
+        difference: result.difference.amount,
+        checkedEntries: result.checkedEntries,
+      });
+      this.metrics.incrementReconciliationDivergence(walletId);
+    }
+
+    return result;
   }
 }
